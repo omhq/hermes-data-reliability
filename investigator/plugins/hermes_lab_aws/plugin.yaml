@@ -1,0 +1,3 @@
+name: hermes-lab-aws
+version: 0.3.0
+description: Scoped S3 and CloudWatch investigations through the host executor.
