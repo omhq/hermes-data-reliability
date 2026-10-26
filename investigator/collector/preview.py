@@ -1,7 +1,8 @@
-import json
 import argparse
 
 from pathlib import Path
+
+from investigator.cli_output import write_json
 
 from .definition import load
 from .matching import MAX_BLOCK_BYTES, Matcher
@@ -31,13 +32,11 @@ def main() -> None:
     with Matcher(rules) as matcher:
         matches = matcher.match([text])[0]
 
-    print(
-        json.dumps(
-            {
-                name: {"severity": rules[name]["severity"], "spans": spans}
-                for name, spans in matches.items()
-            }
-        )
+    write_json(
+        {
+            name: {"severity": rules[name]["severity"], "spans": spans}
+            for name, spans in matches.items()
+        }
     )
 
 

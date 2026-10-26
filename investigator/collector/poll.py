@@ -1,16 +1,18 @@
 import os
 import re
+import time
 import fcntl
 import json
-import time
-import argparse
+import logging
 import sqlite3
+import argparse
 
 from pathlib import Path
 from typing import Any
 
 from investigator.executor.audit import AuditLog
 from investigator.executor.aws import AwsBackend
+from investigator.logging_config import configure_logging
 from investigator.runtime.sessions import investigation_lock
 
 from .cloudwatch import CloudWatchReader
@@ -21,6 +23,8 @@ from .ledger import budget_status, claim, connect, finish
 from .matching import Matcher
 from .observation_store import matches_for
 from .reports import export
+
+LOGGER = logging.getLogger(__name__)
 
 
 def poll(
@@ -85,13 +89,18 @@ def investigate_next(
     except Exception as error:
         safe_error = str(error) if type(error) is RuntimeError else type(error).__name__
         finish(db, row["id"], error=safe_error)
-        print("Investigation deferred; retry state saved.")
+        LOGGER.warning(
+            "Investigation deferred; retry state saved. error_type=%s",
+            type(error).__name__,
+        )
     else:
         finish(db, row["id"], finding=finding)
-        print("Investigation completed and validated.")
+        LOGGER.info("Investigation completed and validated.")
 
 
 def main() -> None:
+    configure_logging()
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
@@ -122,7 +131,7 @@ def main() -> None:
         for source in definition["sources"].values():
             with Matcher(source["rules"]):
                 pass
-        print("Observation configuration and patterns are valid.")
+        LOGGER.info("Observation configuration and patterns are valid.")
         return
 
     os.umask(0o077)
@@ -174,7 +183,7 @@ def main() -> None:
             temporary.write_text(json.dumps(status))
             temporary.replace(args.findings / "last-poll.json")
 
-            print(json.dumps(status))
+            LOGGER.info("Collector poll completed. %s", json.dumps(status))
         finally:
             db.close()
 

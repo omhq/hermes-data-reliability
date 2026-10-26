@@ -1,6 +1,7 @@
 import json
-import argparse
+import logging
 import tempfile
+import argparse
 
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,7 @@ from typing import Any
 import yaml
 
 from investigator.executor.aws import validate_config
+from investigator.logging_config import configure_logging
 
 from .definition import (
     DEFAULT_OBSERVATIONS,
@@ -17,6 +19,8 @@ from .definition import (
     validate,
 )
 from .matching import Matcher
+
+LOGGER = logging.getLogger(__name__)
 
 
 class Dumper(yaml.SafeDumper):
@@ -80,7 +84,10 @@ def write_definition(definition: dict[str, Any], destination: Path) -> None:
 
 
 def main() -> None:
+    configure_logging()
+
     parser = argparse.ArgumentParser()
+
     parser.add_argument("--approved", type=Path, required=True)
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument(
@@ -103,7 +110,7 @@ def main() -> None:
         source=args.source,
     )
 
-    print("Collector configuration validated and installed.")
+    LOGGER.info("Collector configuration validated and installed.")
 
 
 if __name__ == "__main__":

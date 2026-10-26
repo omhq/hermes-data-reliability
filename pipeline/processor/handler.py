@@ -2,11 +2,14 @@ import os
 import uuid
 import json
 import hashlib
+import logging
 
 from contextlib import closing
-from typing import TYPE_CHECKING, Callable, Protocol
+from typing import TYPE_CHECKING, Callable, Protocol, TypedDict
 
 import boto3
+
+from pipeline.logging_config import configure_logging
 
 from .events import InvalidNotification, input_references
 from .logs import log_event
@@ -20,6 +23,13 @@ class LambdaContext(Protocol):
     """Only the request identifier is needed from the Lambda runtime."""
 
     aws_request_id: str
+
+
+class MessageContext(TypedDict):
+    """Identifiers carried by SQS message progress events."""
+
+    message_id: str
+    request_id: str
 
 
 def process_batch(
@@ -52,7 +62,10 @@ def process_batch(
     failures = []
 
     for message, message_id in zip(messages, identifiers):
-        context = {"message_id": message_id, "request_id": request_id}
+        context: MessageContext = {
+            "message_id": message_id,
+            "request_id": request_id,
+        }
 
         try:
             if (
@@ -98,6 +111,7 @@ def process_batch(
                     else "Finished processing SQS message."
                 ),
                 outcome="failed" if failed else "succeeded",
+                level=logging.WARNING if failed else logging.INFO,
                 **context,
             )
         except Exception as error:
@@ -105,6 +119,7 @@ def process_batch(
             log_event(
                 "message_failed",
                 "Could not process SQS message; returning it for retry.",
+                level=logging.ERROR,
                 error_type=type(error).__name__,
                 **context,
             )
@@ -115,6 +130,8 @@ def process_batch(
 def handler(
     event: object, context: LambdaContext | None
 ) -> dict[str, list[dict[str, str]]]:
+    configure_logging()
+
     client = boto3.client("s3")
     bucket = os.environ["EVIDENCE_BUCKET"]
 

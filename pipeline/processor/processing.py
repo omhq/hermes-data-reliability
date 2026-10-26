@@ -1,9 +1,12 @@
 import json
 import math
 import time
+import logging
 
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable, NotRequired, TypedDict
+
+from pipeline.logging_config import log_event as emit_event
 
 from .logs import log_event
 
@@ -12,6 +15,7 @@ if TYPE_CHECKING:
 
 
 MAX_INPUT_BYTES = 1024 * 1024
+LOGGER = logging.getLogger(__name__)
 
 
 class AttemptContext(TypedDict):
@@ -157,6 +161,7 @@ def process_object(
         log_event(
             "step_failed",
             evidence["error"],
+            level=logging.ERROR,
             stage=evidence["stage"],
             error_type=evidence["error_type"],
             **context,
@@ -188,6 +193,7 @@ def process_object(
         log_event(
             "attempt_log_write_failed",
             "Could not persist processor attempt evidence.",
+            level=logging.ERROR,
             **context,
         )
     else:
@@ -204,6 +210,10 @@ def process_object(
         **context,
     )
 
-    print(json.dumps(evidence, sort_keys=True), flush=True)
+    emit_event(
+        LOGGER,
+        evidence,
+        level=logging.ERROR if evidence["status"] == "failed" else logging.INFO,
+    )
 
     return evidence

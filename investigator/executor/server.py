@@ -1,14 +1,17 @@
 import os
-import uuid
 import json
 import socket
-import struct
+import logging
 import argparse
-import threading
 import socketserver
+import threading
+import struct
+import uuid
 
 from pathlib import Path
 from typing import Any, cast
+
+from investigator.logging_config import configure_logging
 
 from .audit import AuditLog
 from .aws import AwsBackend
@@ -16,6 +19,8 @@ from .executor import Executor
 from .models import PolicyDenied
 from .policy import fields, require, wall_time_ms
 from .wire import ExecutionError, encode, receive
+
+LOGGER = logging.getLogger(__name__)
 
 
 class Handler(socketserver.BaseRequestHandler):
@@ -149,6 +154,8 @@ class Server(socketserver.UnixStreamServer):
 
 
 def main() -> None:
+    configure_logging()
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--config", type=Path, required=True)
@@ -196,6 +203,7 @@ def main() -> None:
                 for server in (control, collector):
                     threading.Thread(target=server.serve_forever, daemon=True).start()
 
+                LOGGER.info("Executor ready; scoped read sockets are listening.")
                 requests.serve_forever()
 
 

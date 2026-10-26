@@ -1,13 +1,15 @@
 import os
 import json
-import time
 import sqlite3
 import argparse
 import subprocess
+import time
 
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from investigator.cli_output import write_json
 
 from .wire import call, encode
 
@@ -198,7 +200,7 @@ def main() -> None:
         )
         passed("restart_revokes_contexts")
 
-    print(json.dumps({"passed": True, "checks": checks}, indent=2))
+    write_json({"passed": True, "checks": checks}, indent=2)
 
 
 if __name__ == "__main__":

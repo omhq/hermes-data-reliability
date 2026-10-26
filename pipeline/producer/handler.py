@@ -1,13 +1,19 @@
 import os
-import json
 import uuid
-import hashlib
+import json
 import random
+import hashlib
+import logging
 
 from datetime import datetime, timezone
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Protocol, TypedDict
 
 import boto3
+
+from pipeline.logging_config import configure_logging
+from pipeline.logging_config import log_event as emit_event
+
+LOGGER = logging.getLogger(__name__)
 
 
 class LambdaContext(Protocol):
@@ -16,20 +22,31 @@ class LambdaContext(Protocol):
     aws_request_id: str
 
 
-def log_event(event_name: str, message: str, **details: object) -> None:
-    print(
-        json.dumps(
-            {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "pipeline": "synthetic-producer",
-                "component": "producer",
-                "event": event_name,
-                "message": message,
-                **details,
-            },
-            sort_keys=True,
-        ),
-        flush=True,
+class ProducerContext(TypedDict):
+    """Identifiers carried by producer progress events."""
+
+    run_id: str
+    attempt_id: str
+
+
+def log_event(
+    event_name: str,
+    message: str,
+    *,
+    level: int = logging.INFO,
+    **details: object,
+) -> None:
+    emit_event(
+        LOGGER,
+        {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "pipeline": "synthetic-producer",
+            "component": "producer",
+            "event": event_name,
+            "message": message,
+            **details,
+        },
+        level=level,
     )
 
 
@@ -53,7 +70,7 @@ def produce(
         raise ValueError("Unsupported test scenario")
 
     run_id = hashlib.sha256(occurrence.encode()).hexdigest()[:24]
-    context = {"run_id": run_id, "attempt_id": attempt_id}
+    context: ProducerContext = {"run_id": run_id, "attempt_id": attempt_id}
     key = f"input/{run_id}.json"
 
     log_event(
@@ -93,6 +110,7 @@ def produce(
         log_event(
             "input_write_failed",
             "Input upload failed.",
+            level=logging.ERROR,
             status="failed",
             error_type=type(error).__name__,
             key=key,
@@ -129,6 +147,8 @@ def produce(
 
 
 def handler(event: dict[str, Any], context: LambdaContext | None) -> dict[str, Any]:
+    configure_logging()
+
     client = boto3.client("s3")
     bucket = os.environ["EVIDENCE_BUCKET"]
 
