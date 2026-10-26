@@ -30,7 +30,6 @@ sudo labctl chat
   [AWS access and tools](docs/ACCESS.md),
   [CloudWatch configuration](docs/OBSERVATION_CONFIG.md).
 - Verify: [evaluations](docs/EVALUATION.md).
-- Plan: [roadmap](ROADMAP.md).
 
 ## Development
 
