@@ -6,6 +6,7 @@ from contextlib import redirect_stdout
 from typing import Any, Callable, TypeVar
 from urllib.parse import quote_plus
 
+from pipeline.logging_config import configure_logging
 from pipeline.processor.handler import process_batch
 from pipeline.producer.handler import produce
 
@@ -28,6 +29,7 @@ class PipelineFixture:
 
         try:
             with redirect_stdout(stdout):
+                configure_logging()
                 return operation(*arguments)
         finally:
             self.entries.extend(

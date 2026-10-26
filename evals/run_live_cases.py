@@ -9,6 +9,8 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from investigator.cli_output import write_json
+
 from .live_cases import assess_finding
 
 COLLECTOR_PYTHON = Path("/srv/hermes-lab/collector-venv-py314/bin/python")
@@ -134,7 +136,7 @@ def main() -> None:
         results.append(result)
         output.write_text(json.dumps({"cases": results}, indent=2) + "\n")
         output.chmod(0o600)
-        print(json.dumps(result), flush=True)
+        write_json(result)
 
     if any(
         row["status"] != "complete" or not all(row["checks"].values())

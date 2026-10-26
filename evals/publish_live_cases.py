@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from investigator.cli_output import write_json
 from investigator.runtime.deploy import terraform_output
 
 from .live_cases import CASES, make_case
@@ -158,7 +159,7 @@ def main() -> None:
     args.output.write_text(json.dumps(manifest, indent=2) + "\n")
     args.output.chmod(0o600)
 
-    print(json.dumps(manifest, indent=2))
+    write_json(manifest, indent=2)
 
 
 if __name__ == "__main__":
