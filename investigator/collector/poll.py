@@ -83,9 +83,7 @@ def investigate_next(
         row["matches"] = matches_for(db, row["id"])
         finding = investigate(row, config)
     except Exception as error:
-        safe_error = (
-            str(error) if type(error) is RuntimeError else type(error).__name__
-        )
+        safe_error = str(error) if type(error) is RuntimeError else type(error).__name__
         finish(db, row["id"], error=safe_error)
         print("Investigation deferred; retry state saved.")
     else:
@@ -154,9 +152,7 @@ def main() -> None:
                         (args.retry_incident,),
                     )
 
-            with investigation_lock(
-                args.findings / ".investigation.lock"
-            ) as acquired:
+            with investigation_lock(args.findings / ".investigation.lock") as acquired:
                 if not args.detect_only and acquired:
                     investigate_next(db, config, args.retry_incident)
 

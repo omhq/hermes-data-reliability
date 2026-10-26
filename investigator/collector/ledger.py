@@ -23,8 +23,7 @@ def validate_schema(db: sqlite3.Connection) -> None:
 
     if version not in (0, SCHEMA_VERSION) or (version == 0 and has_tables):
         raise UnsupportedLedger(
-            "Unsupported collector ledger format; "
-            "existing data was not changed"
+            "Unsupported collector ledger format; " "existing data was not changed"
         )
 
 

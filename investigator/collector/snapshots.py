@@ -16,9 +16,7 @@ def prepare_evidence(row: dict[str, Any], config: dict[str, Any]) -> None:
 
     attempt = incident.get("attempt_id", "")
 
-    if not isinstance(attempt, str) or not re.fullmatch(
-        r"[a-zA-Z0-9-]{1,80}", attempt
-    ):
+    if not isinstance(attempt, str) or not re.fullmatch(r"[a-zA-Z0-9-]{1,80}", attempt):
         raise ValueError("invalid attempt ID")
 
     root = Path(config.get("evidence_path", "/srv/hermes-lab/evidence"))
@@ -27,7 +25,7 @@ def prepare_evidence(row: dict[str, Any], config: dict[str, Any]) -> None:
     root.chmod(0o755)
 
     target = root / row["id"]
-    
+
     target.mkdir(exist_ok=True)
     target.chmod(0o755)
 
@@ -106,7 +104,7 @@ def prepare_evidence(row: dict[str, Any], config: dict[str, Any]) -> None:
                 value["data"] = json.loads(body.read_text())
 
         staged = target / f".{action}.tmp"
-        
+
         staged.write_text(json.dumps(value))
         staged.chmod(0o444)
         staged.replace(target / f"{action}.json")

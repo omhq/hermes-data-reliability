@@ -45,8 +45,7 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     event = observation["event"]
 
     if any(
-        observation[key] != config[key]
-        for key in ("account_id", "region", "log_group")
+        observation[key] != config[key] for key in ("account_id", "region", "log_group")
     ):
         raise ValueError("Incident source is no longer authorized")
 
@@ -66,7 +65,7 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     }
 
     settings = row["definition"]["investigation"]
-    
+
     validate_investigation(settings, defaults=True)
 
     prompt = (
@@ -106,9 +105,7 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
 
     with (
         stop_on_disconnect(),
-        InvestigationSession(
-            specification, control_socket=COLLECTOR_SOCKET
-        ) as session,
+        InvestigationSession(specification, control_socket=COLLECTOR_SOCKET) as session,
     ):
         stdout = run_once(session, prompt)
         finding = parse_result(

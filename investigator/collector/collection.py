@@ -87,9 +87,7 @@ def collect_source(
                     end = min(now * 1000, start + MAX_WINDOW_MS)
 
                     if end <= state["cursor_ms"]:
-                        end = min(
-                            now * 1000, state["cursor_ms"] + MAX_WINDOW_MS
-                        )
+                        end = min(now * 1000, state["cursor_ms"] + MAX_WINDOW_MS)
 
                     with db:
                         db.execute(
@@ -172,9 +170,7 @@ def collect_source(
         safe_error = (
             error.code
             if isinstance(error, ExecutionError)
-            else str(error)
-            if isinstance(error, MatchError)
-            else type(error).__name__
+            else str(error) if isinstance(error, MatchError) else type(error).__name__
         )
 
         with db:
