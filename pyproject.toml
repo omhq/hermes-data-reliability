@@ -1,0 +1,20 @@
+[tool.ruff]
+target-version = "py314"
+line-length = 79
+extend-exclude = [".local", ".terraform", ".hermes", "findings"]
+
+[tool.ruff.lint]
+select = ["ANN", "E", "F", "I", "T20", "TID251", "UP007", "UP045", "W"]
+# JSON/provider boundaries and subprocess keyword forwarding are dynamic.
+ignore = ["ANN401"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"__future__.annotations" = { msg = "Use Python 3.14 native deferred annotations." }
+
+[tool.pyright]
+pythonVersion = "3.14"
+# Production runs on Linux, including the executor's SO_PEERCRED checks.
+pythonPlatform = "Linux"
+venvPath = "."
+venv = ".venv"
+include = ["investigator", "pipeline", "evals", "tests"]
