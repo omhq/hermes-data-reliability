@@ -1,13 +1,14 @@
 import os
-import signal
 import selectors
+import signal
 import subprocess
 import tempfile
 import time
 
+from collections.abc import Generator
 from contextlib import contextmanager
 from types import FrameType
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any
 
 from .sessions import SessionUnavailable
 
@@ -21,7 +22,7 @@ MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 
 
 @contextmanager
-def stop_on_disconnect() -> Iterator[None]:
+def stop_on_disconnect() -> Generator[None]:
     """Unwind the worker and authorization when SSH or the host stops us."""
     signals = (signal.SIGHUP, signal.SIGTERM)
     previous = {number: signal.getsignal(number) for number in signals}

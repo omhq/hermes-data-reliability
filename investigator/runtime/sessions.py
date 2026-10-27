@@ -2,10 +2,11 @@ import os
 import re
 import fcntl
 
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterator, Self
+from typing import Any, Callable, Self
 
 from investigator.executor.wire import call
 
@@ -19,7 +20,7 @@ class SessionUnavailable(RuntimeError):
 
 
 @contextmanager
-def investigation_lock(path: str | Path = LOCK_PATH) -> Iterator[bool]:
+def investigation_lock(path: str | Path = LOCK_PATH) -> Generator[bool]:
     """A busy chat defers automatic claims without spending an attempt."""
     path = Path(path)
 

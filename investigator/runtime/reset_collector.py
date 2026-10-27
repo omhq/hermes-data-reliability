@@ -1,17 +1,18 @@
 import os
-import argparse
 import fcntl
 import json
 import logging
+import argparse
 import shutil
 import sqlite3
 import subprocess
 import tempfile
 import time
 
+from collections.abc import Generator
 from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from investigator.collector.configure import configure
 from investigator.collector.definition import duration
@@ -100,7 +101,7 @@ def prepare_findings(
 
 
 @contextmanager
-def poll_lock(findings: Path) -> Iterator[None]:
+def poll_lock(findings: Path) -> Generator[None]:
     """Keep the existing lock inode so another reader cannot bypass it."""
     with (findings / ".poll.lock").open("a+") as stream:
         os.fchown(stream.fileno(), 1000, 1000)
