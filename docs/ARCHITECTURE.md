@@ -84,6 +84,14 @@ chat citation use also relies on runtime instructions.
 
 ## Investigation limits
 
+Chat and automatic investigations share the Hermes settings in
+`investigator/runtime/config.yaml`: provider, model, reasoning, turn limit,
+run budget, API retries, and recovery cycles. Deployment installs this file at
+`/srv/hermes-lab/hermes/config.yaml`, mounted as `/opt/data/config.yaml` in the
+runtime. The worker lets Hermes load these settings and explicitly selects the
+`hermes_lab_aws` toolset, runbook, and CLI input/output mode. Host access budgets
+and outer worker timeouts apply independently of Hermes settings.
+
 | Setting                                  | Current value                                                           |
 | ---------------------------------------- | ----------------------------------------------------------------------- |
 | Collector tick / default source interval | 15 seconds / two minutes                                                |

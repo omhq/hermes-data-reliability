@@ -1,0 +1,42 @@
+[Unit]
+Description=Hermes Lab trusted AWS read executor
+After=network-online.target
+Wants=network-online.target
+PartOf=hermes-lab.target
+ConditionPathExists=/srv/hermes-lab/ops/enabled
+
+[Service]
+Type=simple
+User=hermes-lab-executor
+Group=hermes-lab-executor
+SupplementaryGroups=10000 1000
+WorkingDirectory=/opt/hermes-lab-executor/code
+ExecStart=/usr/bin/python3.14 -m investigator.executor.server --config /etc/hermes-lab/executor.json --socket-dir /run/hermes-lab-executor --state-dir /var/lib/hermes-lab-executor
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=5
+KillMode=control-group
+RuntimeDirectory=hermes-lab-executor hermes-lab-collector
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+StateDirectory=hermes-lab-executor
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=384M
+TasksMax=32
+LimitCORE=0
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=hermes-lab.target

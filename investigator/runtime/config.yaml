@@ -1,0 +1,20 @@
+model:
+  provider: openai-codex
+  default: gpt-6-luna
+agent:
+  max_turns: 10
+  run_budget_seconds: 180
+  reasoning_effort: low
+  api_max_retries: 1
+  auto_recovery_cycles: 0
+auth:
+  adopt_external_logins: false
+plugins:
+  enabled:
+    - hermes-lab-aws
+terminal:
+  backend: ssh
+  persistent_shell: false
+  credential_files: []
+  env_passthrough: []
+  cwd: /workspace

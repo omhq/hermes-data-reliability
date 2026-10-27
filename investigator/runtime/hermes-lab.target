@@ -1,0 +1,8 @@
+[Unit]
+Description=Hermes Lab runtime and pipeline investigator
+Requires=hermes-lab-tools.service hermes-lab-runtime.service
+Wants=hermes-lab-poller.timer
+After=hermes-lab-tools.service hermes-lab-runtime.service
+
+[Install]
+WantedBy=multi-user.target

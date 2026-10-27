@@ -1,0 +1,18 @@
+[Unit]
+Description=Hermes model runtime with remote isolated tools
+Requires=docker.service hermes-lab-tools.service hermes-lab-network-policy.service hermes-lab-executor.service
+After=docker.service hermes-lab-tools.service hermes-lab-network-policy.service hermes-lab-executor.service network-online.target
+PartOf=hermes-lab.target docker.service
+
+[Service]
+WorkingDirectory=/srv/hermes-lab/code
+Type=simple
+ExecStartPre=-/usr/bin/docker rm -f hermes-lab-runtime
+ExecStart=/usr/bin/python3.14 -m investigator.runtime.containers hermes
+ExecStartPost=/usr/bin/python3.14 -m investigator.runtime.ready
+ExecStop=-/usr/bin/docker stop -t 20 hermes-lab-runtime
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+TimeoutStartSec=120
+

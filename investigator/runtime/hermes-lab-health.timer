@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Hermes Lab host and runtime health each minute
+
+[Timer]
+OnBootSec=120
+OnUnitInactiveSec=60
+Unit=hermes-lab-health.service
+
+[Install]
+WantedBy=timers.target

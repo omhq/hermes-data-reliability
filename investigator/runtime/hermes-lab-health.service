@@ -1,0 +1,12 @@
+[Unit]
+Description=Publish Hermes Lab runtime health heartbeat
+After=docker.service network-online.target
+
+[Service]
+WorkingDirectory=/srv/hermes-lab/code
+Type=oneshot
+ExecStart=/usr/bin/python3.14 -m investigator.runtime.health
+TimeoutStartSec=60
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077

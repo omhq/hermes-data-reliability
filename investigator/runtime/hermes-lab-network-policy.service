@@ -1,0 +1,12 @@
+[Unit]
+Description=Block EC2 metadata from the Hermes runtime network
+Requires=docker.service
+After=docker.service
+Before=hermes-lab-runtime.service
+PartOf=docker.service
+
+[Service]
+WorkingDirectory=/srv/hermes-lab/code
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3.14 -m investigator.runtime.network_policy

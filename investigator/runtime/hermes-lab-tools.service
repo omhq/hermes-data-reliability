@@ -1,0 +1,16 @@
+[Unit]
+Description=Isolated Hermes evidence inspection container
+Requires=docker.service
+After=docker.service network-online.target
+PartOf=hermes-lab.target docker.service
+
+[Service]
+WorkingDirectory=/srv/hermes-lab/code
+Type=simple
+ExecStartPre=-/usr/bin/docker rm -f hermes-lab-tools
+ExecStart=/usr/bin/python3.14 -m investigator.runtime.containers tools
+ExecStop=-/usr/bin/docker stop -t 10 hermes-lab-tools
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
