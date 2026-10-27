@@ -48,6 +48,12 @@ includes saved reading positions, continuation tokens, definition revisions,
 pending incidents, and attempts. Older checkpoints need code that supports
 their database format.
 
+Backups made after report email delivery is installed also contain
+`findings/notifications.sqlite3`. Restore validates its format and integrity;
+keep pending messages and delivery attempts with the findings. Collector reset
+retains this database in place. Restoring an older backup can resend reports
+accepted after that backup; it never redirects pending mail to a new topic.
+
 Rotated OAuth may require `sudo labctl login`; use one controller per token
 family. Before retiring the old host, verify database integrity, an investigation,
 health, and backup completion. Remove recovery volumes afterward. Termination,

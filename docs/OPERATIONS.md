@@ -186,7 +186,41 @@ tail -n 5 /srv/hermes-lab/findings/incidents.jsonl
 The poller ticks every 15 seconds after work finishes. Due sources use their
 YAML interval; backlog/errors retry next tick. Hermes runs only for eligible
 incidents within three attempts/rolling hour; excess incidents wait. A running
-container need not be making model calls. Emails cover health, not findings.
+container need not be making model calls. Emails contain completed agent
+investigations; CloudWatch health alarm emails are disabled.
+
+## Agent report emails
+
+Configure the recipient with `alert_email` in your workstation's ignored
+`infra/terraform.tfvars`, then review and apply the Terraform plan and deploy
+the runtime using the [setup guide](SETUP.md). Confirm the SNS subscription
+email for a new recipient. The existing subscription is reused when unchanged.
+
+On EC2, check delivery:
+
+```bash
+sudo systemctl status hermes-lab-notifications.timer --no-pager
+sudo journalctl -u hermes-lab-notifications.service -n 20 --no-pager
+```
+
+The first scan skips historical reports. Subsequent completed investigations
+are queued for email with their explanation, proposed action, uncertainty, and
+compact incident metadata. Delivery pauses with `labctl pause` and resumes with
+`labctl start`. Health monitoring continues locally and in CloudWatch, without
+health or recovery emails. A stopped or failing agent cannot author a new
+investigation report.
+
+On EC2, you can send one previously historical report once:
+
+```bash
+cd /srv/hermes-lab/code
+sudo -u ec2-user /usr/bin/python3.14 -m investigator.runtime.notifications \
+  --send-incident INCIDENT_ID
+```
+
+Sent reports are not requeued by this command. Delivery attempts and sanitized
+errors are saved in `/srv/hermes-lab/findings/notifications.sqlite3`; see
+[delivery rules](ARCHITECTURE.md#health-and-storage) for retries and duplicates.
 
 ## Configure the collector
 
@@ -287,6 +321,7 @@ aws ec2 wait instance-status-ok --profile YOUR_PROFILE --region us-east-1 \
 Repeat live IP lookup/SSH, then `sudo labctl start` and `sudo labctl status` if
 previously paused. Resume generation separately.
 
-Stopped EC2 retains billable storage/resources and cannot send health heartbeats;
-manage alarm actions for planned maintenance. Stop/start preserves disk, while
+Stopped EC2 retains billable storage/resources and cannot send health heartbeats
+or agent reports. CloudWatch alarm actions remain disabled. Stop/start preserves
+disk, while
 termination, replacement, or `terraform destroy` may delete it.

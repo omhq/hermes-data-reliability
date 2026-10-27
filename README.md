@@ -1,49 +1,92 @@
 # Hermes Data Reliability
 
-An AWS lab for investigating failed data loads with Hermes.
+Reproduce failed data loads in AWS and investigate them with Hermes Agent.
+You configure log sources and match rules in YAML. A host collector detects
+incidents, and Hermes follows the evidence with scoped AWS reads to explain
+what failed and propose a fix.
 
-```text
-Scheduled producer Lambda -> S3 input/ -> SQS -> Processor Lambda -> S3 output/
+```mermaid
+flowchart TB
+    subgraph pipeline["AWS · Example data pipeline"]
+        direction LR
+        producer["Scheduled<br/>Producer Lambda"] --> input[("S3<br/>input/")]
+        input --> queue["SQS"]
+        queue --> processor["Processor Lambda"]
+        processor --> output[("S3<br/>output/")]
+    end
+
+    subgraph investigator["EC2 · Investigation and reporting"]
+        direction LR
+        collector["Host collector<br/>YAML match rules"]
+        agent["Hermes Agent<br/>Scoped evidence reads"]
+        reports["Reports<br/>Markdown + JSONL"]
+        collector -->|Matched incident| agent
+        agent -->|Host validates findings| reports
+    end
+
+    pipeline -.->|Existing logs| logs["CloudWatch Logs"]
+    logs -->|Poll configured sources| investigator
+    investigator -->|Agent prose + metadata| email["Email via SNS<br/>When configured"]
+
+    classDef pipeline fill:#eff6ff,stroke:#2563eb,color:#1e3a8a
+    classDef observe fill:#f1f5f9,stroke:#64748b,color:#0f172a
+    classDef agent fill:#ecfdf5,stroke:#059669,color:#064e3b
+    classDef report fill:#f5f3ff,stroke:#7c3aed,color:#4c1d95
+    class producer,input,queue,processor,output pipeline
+    class logs,collector observe
+    class agent agent
+    class reports,email report
+    style pipeline fill:transparent,stroke:#94a3b8
+    style investigator fill:transparent,stroke:#94a3b8
 ```
 
-A host collector applies YAML severity/match rules to existing CloudWatch logs.
-Hermes investigates with scoped AWS reads and proposes fixes. Findings live in
-`/srv/hermes-lab/findings/reports/` on the EC2..
+Reports include an explanation, uncertainty, evidence references, and a proposed
+action. Read them on EC2 at `/srv/hermes-lab/findings/reports/`, or configure
+`alert_email` for agent prose and incident metadata by email. CloudWatch health
+monitoring remains active with its notification actions disabled.
 
-## Use the lab
+## Quick start
 
-Start with the [operations guide](OPERATIONS.md) for SSH and current IP lookup.
-Once connected to EC2:
+For a new lab, follow [setup and deployment](docs/SETUP.md). For an existing
+lab, use the [operations guide](docs/OPERATIONS.md) to find the current address
+and connect from your workstation. Then run **on EC2**:
 
 ```bash
-sudo labctl status
-sudo labctl pause
 sudo labctl start
+sudo labctl status
 sudo labctl chat
 ```
 
+Use `sudo labctl pause` to pause the investigator. Synthetic data generation
+has a [separate control](docs/OPERATIONS.md#pause-or-resume-synthetic-data-generation).
+
 ## Guides
 
-- Run: [setup](docs/SETUP.md), [operations](OPERATIONS.md),
-  [recovery](docs/RECOVERY.md).
-- Understand: [architecture](docs/ARCHITECTURE.md),
-  [AWS access and tools](docs/ACCESS.md),
-  [CloudWatch configuration](docs/OBSERVATION_CONFIG.md).
-- Verify: [evaluations](docs/EVALUATION.md).
+- [Architecture](docs/ARCHITECTURE.md) — data flow, investigation limits, and reporting.
+- [Observation configuration](docs/OBSERVATION_CONFIG.md) — log sources, match rules, and prompts.
+- [AWS access and tools](docs/ACCESS.md) — authorization and evidence boundaries.
+- [Recovery](docs/RECOVERY.md) — backups, restore, and upgrades.
+- [Evaluations](docs/EVALUATION.md) — reproducible scenarios and verification.
 
 ## Development
 
-Use Python 3.14. From the repository root:
+Use **Python 3.14**. Run on your workstation, from the repository root:
 
 ```bash
 python3.14 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python -m unittest discover -s tests -t . -v
 ```
 
-In VSCode, select this repository's `.venv`.
-The shared Pyright configuration targets Python 3.14 on Linux, the deployment
-platform. Keep Pylance current enough to support that version. The workspace
-setting defaults new selections to `.venv`. The standalone plugin verifier
-loads Hermes APIs at runtime inside the pinned container.
+With the virtual environment active, run the checks from the repository root:
+
+```bash
+python -m ruff format --check .
+python -m ruff check .
+python -m unittest discover -s tests -t . -v
+python -m compileall -q investigator pipeline evals tests
+git diff --check
+```
+
+In VS Code, select this repository's `.venv` and use a Pylance/Pyright version
+that supports Python 3.14. Type checking targets Linux, the deployment platform.

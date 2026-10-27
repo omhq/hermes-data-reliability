@@ -22,7 +22,7 @@ For a new checkout, copy `infra/terraform.tfvars.example` to ignored
 | `ssh_key_name` | Existing EC2 key pair; alternatively use `ssh_public_key_path` |
 | `ssh_cidr` | Trusted public IPv4 `/32`; wider than `/24` is rejected |
 | `ami_id` | Reviewed Amazon Linux 2023 x86_64 image |
-| `alert_email` | Optional SNS recipient |
+| `alert_email` | Optional recipient for agent reports |
 | `pipeline_schedule_enabled` | `false` until smoke checks pass |
 
 Deployment needs EC2/VPC, IAM, S3, SQS, Lambda, Scheduler, CloudWatch, SNS,

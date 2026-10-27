@@ -284,3 +284,4 @@ id_ed25519*
 **/.ruff_cache/
 **/.local/
 *.tfplan
+*.lock.hcl

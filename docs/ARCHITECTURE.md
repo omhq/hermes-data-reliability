@@ -141,7 +141,21 @@ incidents, and a backup within 36 hours. Backup checks cache for one hour.
 Intentional pause skips runtime checks but retains disk and backup checks.
 Missing heartbeats alarm; healthy checks make no model calls.
 
-SNS sends health and recovery alerts; findings stay local. The default host is
+CloudWatch health alarms remain active without notifications. With `alert_email`
+configured, SNS emails validated Hermes findings: explanation, proposed action,
+uncertainty, and incident metadata. Evidence stays on EC2; initial delivery
+skips historical reports.
+
+The host verifies account, role, and topic without model calls. Delivery state
+in `findings/notifications.sqlite3` survives reboots and collector resets;
+unsupported formats are rejected. Each report gets up to three attempts, at
+least five minutes apart, with one attempt per minute globally. Exhausted
+reports stay saved; topic changes do not redirect pending reports.
+
+"Sent" means SNS acceptance. Inbox delivery is unverified; a crash before saving
+acceptance can cause duplicates.
+
+The default host is
 `t3.medium` with 30 GiB encrypted gp3 storage and daily backups.
 It uses public IPv4 without NAT, a load balancer, or RDS. Stopping saves compute
 charges; storage and other services remain billable. T3 Standard can throttle
