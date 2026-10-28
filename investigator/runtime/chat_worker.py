@@ -5,10 +5,9 @@ import signal
 import subprocess
 import sys
 import time
+from importlib import import_module
 from pathlib import Path
 from types import FrameType
-
-import yaml
 
 from investigator.tool_packages import ToolPackages
 
@@ -40,6 +39,15 @@ def stop(session_id: str) -> None:
         pass
 
 
+def read_agent_config(home: Path) -> object:
+    """Use the YAML parser bundled with the selected Hermes image."""
+    try:
+        parser = import_module("hermes_yaml")
+        return parser.safe_load((home / "config.yaml").read_text())
+    except Exception:
+        raise ValueError("Invalid agent tool package configuration") from None
+
+
 def launch(
     session_id: str,
     seconds: float,
@@ -50,10 +58,8 @@ def launch(
     home = Path(os.environ.get("HERMES_HOME", "/opt/data"))
 
     try:
-        selection = ToolPackages.from_agent_config(
-            yaml.safe_load((home / "config.yaml").read_text())
-        )
-    except ValueError, TypeError, yaml.YAMLError:
+        selection = ToolPackages.from_agent_config(read_agent_config(home))
+    except ValueError, TypeError:
         raise ValueError("Invalid agent tool package configuration") from None
 
     if not selection.toolsets:

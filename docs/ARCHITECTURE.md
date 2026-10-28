@@ -3,6 +3,43 @@
 The pipeline writes files and logs. A separate collector watches the logs, and
 Hermes investigates matches without changing the pipeline.
 
+## Overview
+
+```mermaid
+flowchart TB
+    subgraph pipeline["AWS · Example data pipeline"]
+        direction LR
+        producer["Scheduled<br/>Producer Lambda"] --> input[("S3<br/>input/")]
+        input --> queue["SQS"]
+        queue --> processor["Processor Lambda"]
+        processor --> output[("S3<br/>output/")]
+    end
+
+    subgraph investigator["EC2 · Investigation and reporting"]
+        direction LR
+        collector["Host collector<br/>YAML match rules"]
+        agent["Hermes Agent<br/>Scoped evidence reads"]
+        reports["Reports<br/>Markdown + JSONL"]
+        collector -->|Matched incident| agent
+        agent -->|Host validates findings| reports
+    end
+
+    pipeline -.->|Existing logs| logs["CloudWatch Logs"]
+    logs -->|Poll configured sources| investigator
+    investigator -->|Agent prose + metadata| email["Email via SNS<br/>When configured"]
+
+    classDef pipeline fill:#eff6ff,stroke:#2563eb,color:#1e3a8a
+    classDef observe fill:#f1f5f9,stroke:#64748b,color:#0f172a
+    classDef agent fill:#ecfdf5,stroke:#059669,color:#064e3b
+    classDef report fill:#f5f3ff,stroke:#7c3aed,color:#4c1d95
+    class producer,input,queue,processor,output pipeline
+    class logs,collector observe
+    class agent agent
+    class reports,email report
+    style pipeline fill:transparent,stroke:#94a3b8
+    style investigator fill:transparent,stroke:#94a3b8
+```
+
 ## Data flow
 
 ```mermaid
@@ -133,6 +170,10 @@ Sources poll when due, and catch-up or errors retry next tick. Active work,
 including model calls, can delay polling. Evaluation tools are manual only.
 Deployment packages do not grant additional container access.
 
+The container worker reads agent configuration with Hermes's bundled
+`hermes_yaml` parser. Host observation configuration uses the collector's
+pinned PyYAML dependency.
+
 ## Health and storage
 
 Host logs use stderr with UTC time, level, and module; JSON command results use
@@ -144,10 +185,12 @@ incidents, and a backup within 36 hours. Backup checks cache for one hour.
 Intentional pause skips runtime checks but retains disk and backup checks.
 Missing heartbeats alarm; healthy checks make no model calls.
 
-CloudWatch health alarms remain active without notifications. With `alert_email`
-configured, SNS emails validated Hermes findings: explanation, proposed action,
-uncertainty, and incident metadata. Evidence stays on EC2; initial delivery
-skips historical reports.
+CloudWatch health alarms remain active with their notification actions disabled.
+
+Reports include an explanation, uncertainty, evidence references, and a proposed
+action. Read them on EC2 at `/srv/hermes-lab/findings/reports/`, or configure
+`alert_email` for validated agent prose and incident metadata by email via SNS.
+Evidence stays on EC2; initial delivery skips historical reports.
 
 The host verifies account, role, and topic without model calls. Delivery state
 in `findings/notifications.sqlite3` survives reboots and collector resets;

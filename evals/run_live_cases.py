@@ -11,7 +11,7 @@ from typing import Any
 
 from investigator.cli_output import write_json
 
-from .live_cases import assess_finding
+from .assessment import assess_finding
 
 COLLECTOR_PYTHON = Path("/srv/hermes-lab/collector-venv-py314/bin/python")
 MAX_POLLS = 15

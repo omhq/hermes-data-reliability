@@ -1,49 +1,12 @@
 # Hermes Data Reliability
 
+![Hermes overview: pipeline signals, independent investigation, findings, chat, and configured actions](docs/assets/hermes-architecture.svg)
+
 Reproduce failed data loads in AWS and investigate them with Hermes Agent.
 You configure log sources and match rules in YAML. A host collector detects
 incidents, and Hermes follows the evidence with scoped AWS reads to explain
-what failed and propose a fix.
-
-```mermaid
-flowchart TB
-    subgraph pipeline["AWS · Example data pipeline"]
-        direction LR
-        producer["Scheduled<br/>Producer Lambda"] --> input[("S3<br/>input/")]
-        input --> queue["SQS"]
-        queue --> processor["Processor Lambda"]
-        processor --> output[("S3<br/>output/")]
-    end
-
-    subgraph investigator["EC2 · Investigation and reporting"]
-        direction LR
-        collector["Host collector<br/>YAML match rules"]
-        agent["Hermes Agent<br/>Scoped evidence reads"]
-        reports["Reports<br/>Markdown + JSONL"]
-        collector -->|Matched incident| agent
-        agent -->|Host validates findings| reports
-    end
-
-    pipeline -.->|Existing logs| logs["CloudWatch Logs"]
-    logs -->|Poll configured sources| investigator
-    investigator -->|Agent prose + metadata| email["Email via SNS<br/>When configured"]
-
-    classDef pipeline fill:#eff6ff,stroke:#2563eb,color:#1e3a8a
-    classDef observe fill:#f1f5f9,stroke:#64748b,color:#0f172a
-    classDef agent fill:#ecfdf5,stroke:#059669,color:#064e3b
-    classDef report fill:#f5f3ff,stroke:#7c3aed,color:#4c1d95
-    class producer,input,queue,processor,output pipeline
-    class logs,collector observe
-    class agent agent
-    class reports,email report
-    style pipeline fill:transparent,stroke:#94a3b8
-    style investigator fill:transparent,stroke:#94a3b8
-```
-
-Reports include an explanation, uncertainty, evidence references, and a proposed
-action. Read them on EC2 at `/srv/hermes-lab/findings/reports/`, or configure
-`alert_email` for agent prose and incident metadata by email. CloudWatch health
-monitoring remains active with its notification actions disabled.
+what failed, propose a fix, or perform automatic remediation you define in
+YAML, within explicitly granted permissions.
 
 ## Quick start
 

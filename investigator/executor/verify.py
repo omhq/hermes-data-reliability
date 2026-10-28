@@ -196,15 +196,20 @@ def main() -> None:
         )
 
         for _ in range(50):
-            if (SOCKETS / "requests.sock").exists():
-                break
+            try:
+                response = request(kind="input")
+            except OSError:
+                time.sleep(0.1)
+                continue
 
-            time.sleep(0.1)
+            check(
+                response.get("error") == "unknown_context",
+                "restart_revokes_contexts",
+            )
+            break
+        else:
+            raise RuntimeError("executor_unavailable_after_restart")
 
-        check(
-            request(kind="input").get("error") == "unknown_context",
-            "restart_revokes_contexts",
-        )
         passed("restart_revokes_contexts")
 
     write_json({"passed": True, "checks": checks}, indent=2)

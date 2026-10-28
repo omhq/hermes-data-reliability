@@ -29,6 +29,10 @@ absence. If evidence cannot be read, report the limitation.
 
 Follow the caller's JSON format. Each citation must copy the successful
 response's `evidence_id` and one entry's `reference` from its `references` list.
+For S3 listings, cite a returned object reference. A bucket or directory prefix
+in the request, response source, or summary is not a citation. If a response's
+`references` list is empty, do not cite that response. Omit unsupported citations
+instead of constructing a reference yourself.
 The host checks citations against receipts from this session. A receipt proves
 which evidence was returned; it does not prove that an interpretation is true.
 Listings do not prove object contents. Partial samples and pages are incomplete;

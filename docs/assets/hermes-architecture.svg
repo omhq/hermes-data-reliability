@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1180" viewBox="0 0 1800 1180" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">Hermes: from pipeline signals to investigation and action</title>
+  <desc id="description">Three-column concept architecture. An existing AWS data pipeline emits CloudWatch logs, CloudTrail API activity, and other configured signals. An unobtrusive collector matches events defined in your YAML and triggers an independently deployed Hermes agent, on EC2, ECS with Fargate, or other compute. The agent uses authorized tools to investigate AWS logs and resources. It sends findings and warnings, supports two-way chat, and can execute immediate remediation explicitly defined in YAML and permitted by trusted access policy. The current project implements CloudWatch collection, EC2 investigations, notifications, and chat; broader collection sources, other deployment targets, and automated remediation are conceptual extensions.</desc>
+  <defs>
+    <style>
+      text { font-family: 'Avenir Next', Avenir, 'Segoe UI', Arial, sans-serif; }
+      .ink { fill: #202B30; }
+      .muted { fill: #57676C; }
+      .heading { font-size: 29px; font-weight: 600; letter-spacing: -0.6px; }
+      .label { font-size: 23px; font-weight: 600; }
+      .body { font-size: 20px; }
+      .small { font-size: 18px; }
+      .caption { font-size: 17px; }
+      .line { stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .icon { stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <marker id="arrow-ink" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" stroke="#6E7F83" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" stroke="#B65D27" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" stroke="#25756D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <symbol id="database" viewBox="0 0 32 32">
+      <ellipse cx="16" cy="7" rx="11" ry="4"/>
+      <path d="M5 7v18c0 2.2 4.9 4 11 4s11-1.8 11-4V7M5 16c0 2.2 4.9 4 11 4s11-1.8 11-4"/>
+    </symbol>
+    <symbol id="compute" viewBox="0 0 32 32">
+      <rect x="7" y="7" width="18" height="18" rx="3"/>
+      <path d="M12 2v5m8-5v5m-8 18v5m8-5v5M2 12h5m-5 8h5m18-8h5m-5 8h5"/>
+      <rect x="12" y="12" width="8" height="8" rx="1"/>
+    </symbol>
+    <symbol id="bucket" viewBox="0 0 32 32">
+      <ellipse cx="16" cy="6" rx="12" ry="4"/>
+      <path d="M4 6l3 20c.5 4 17.5 4 18 0l3-20M12 17h8"/>
+    </symbol>
+    <symbol id="logs" viewBox="0 0 32 32">
+      <rect x="4" y="3" width="24" height="26" rx="3"/>
+      <path d="M10 10h12M10 16h12M10 22h8"/>
+    </symbol>
+    <symbol id="chat" viewBox="0 0 32 32">
+      <path d="M26 4H6a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h4v5l7-5h9a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3Z"/>
+      <path d="M10 11h12M10 17h8"/>
+    </symbol>
+    <symbol id="notification" viewBox="0 0 32 32">
+      <path d="M7 13a9 9 0 0 1 18 0v6l3 5H4l3-5v-6Zm6 16h6M16 1v3"/>
+    </symbol>
+    <symbol id="bolt" viewBox="0 0 32 32">
+      <path d="M19 2 6 18h9l-2 12 13-17h-9l2-11Z"/>
+    </symbol>
+    <symbol id="tools" viewBox="0 0 32 32">
+      <path d="m4 9 6 7-6 7m10 0h11M20 4l-5 24"/>
+    </symbol>
+    <symbol id="collector" viewBox="0 0 32 32">
+      <path d="M3 5h26L19 17v10l-6-3v-7L3 5Z"/>
+    </symbol>
+  </defs>
+
+  <rect width="1800" height="1180" fill="#FFFFFF"/>
+
+  <g id="page-heading">
+    <text x="72" y="86" class="ink" font-size="48" font-weight="600" letter-spacing="-1.6">From pipeline signals to investigation and action.</text>
+    <text x="74" y="130" class="muted" font-size="23">Hermes watches what you define, follows the evidence, and works with you to resolve issues.</text>
+    <path d="M72 170H1728" stroke="#D7DEDA"/>
+  </g>
+
+  <g id="column-headings">
+    <text x="72" y="222" class="heading ink">Your pipeline &amp; AWS signals</text>
+    <text x="72" y="256" class="body muted">Keep your existing jobs and instrumentation.</text>
+    <text x="648" y="222" class="heading ink">An independent agent</text>
+    <text x="648" y="256" class="body muted">Deployed separately. Investigates with tools.</text>
+    <text x="1248" y="222" class="heading ink">Findings, conversation &amp; action</text>
+    <text x="1248" y="256" class="body muted">Choose how Hermes responds.</text>
+  </g>
+
+  <!-- Existing pipeline and its telemetry. -->
+  <g id="pipeline">
+    <rect x="72" y="320" width="480" height="180" rx="14" fill="#FFFFFF" stroke="#D4DCD7"/>
+    <text x="96" y="356" class="label ink">Your data pipeline</text>
+
+    <use href="#bucket" x="132" y="380" width="32" height="32" stroke="#B65D27" class="icon"/>
+    <text x="148" y="444" text-anchor="middle" class="body ink" font-weight="600">Ingest</text>
+    <text x="148" y="473" text-anchor="middle" class="small muted">S3 / streams</text>
+
+    <path d="M214 409H240" stroke="#8C9999" class="line" marker-end="url(#arrow-ink)"/>
+    <use href="#compute" x="296" y="380" width="32" height="32" stroke="#B65D27" class="icon"/>
+    <text x="312" y="444" text-anchor="middle" class="body ink" font-weight="600">Process</text>
+    <text x="312" y="473" text-anchor="middle" class="small muted">Lambda / ECS</text>
+
+    <path d="M382 409H408" stroke="#8C9999" class="line" marker-end="url(#arrow-ink)"/>
+    <use href="#database" x="460" y="380" width="32" height="32" stroke="#B65D27" class="icon"/>
+    <text x="476" y="444" text-anchor="middle" class="body ink" font-weight="600">Store</text>
+    <text x="476" y="473" text-anchor="middle" class="small muted">S3 / database</text>
+  </g>
+
+  <path d="M312 500V558" stroke="#B65D27" class="line" marker-end="url(#arrow-orange)"/>
+  <text x="332" y="536" class="small muted">Existing telemetry</text>
+
+  <g id="aws-signals">
+    <rect x="72" y="560" width="480" height="160" rx="14" fill="#FBF0E5" stroke="#E4CBB5"/>
+    <use href="#logs" x="96" y="586" width="28" height="28" stroke="#A65324" class="icon"/>
+    <text x="138" y="609" class="label ink">CloudWatch</text>
+    <text x="96" y="642" class="body muted">Logs &amp; metrics</text>
+    <path d="M313 587V654" stroke="#DFC5AE"/>
+    <text x="337" y="609" class="label ink">CloudTrail</text>
+    <text x="337" y="642" class="body muted">API activity</text>
+    <text x="96" y="693" class="small muted">+ other configured AWS event sources</text>
+  </g>
+
+  <g id="aws-evidence">
+    <rect x="72" y="780" width="480" height="124" rx="14" fill="#FFFFFF" stroke="#D4DCD7"/>
+    <text x="96" y="818" class="label ink">AWS logs &amp; resources</text>
+    <text x="96" y="852" class="body muted">Objects, queues, compute, databases</text>
+    <text x="96" y="882" class="small muted">Evidence from the systems you already run</text>
+  </g>
+
+  <!-- Observation is separate from investigation queries. -->
+  <path d="M552 609H585Q600 609 600 594V415Q600 400 615 400H646" stroke="#B65D27" class="line" marker-end="url(#arrow-orange)"/>
+
+  <g id="independent-runtime">
+    <rect x="624" y="288" width="552" height="636" rx="20" stroke="#B8CCC4" stroke-dasharray="6 7"/>
+    <rect x="672" y="275" width="456" height="29" fill="#FFFFFF"/>
+    <text x="900" y="297" text-anchor="middle" class="small" fill="#316A62">Deploy on EC2 · ECS / Fargate · other compute</text>
+  </g>
+
+  <g id="event-collector">
+    <rect x="648" y="320" width="504" height="166" rx="14" fill="#E9F1EC" stroke="#B8CCC4"/>
+    <use href="#collector" x="674" y="345" width="30" height="30" stroke="#25756D" class="icon"/>
+    <text x="720" y="371" class="label ink">Unobtrusive collector</text>
+    <text x="674" y="413" class="body ink">Listens to the log sources you configure.</text>
+    <text x="674" y="444" class="body muted">Captures events matching your YAML rules.</text>
+    <text x="674" y="471" class="small muted">No changes to pipeline code required.</text>
+  </g>
+
+  <path d="M900 486V528" stroke="#25756D" class="line" marker-end="url(#arrow-teal)"/>
+  <text x="920" y="515" class="small" fill="#316A62">Matched events</text>
+
+  <g id="hermes-agent">
+    <rect x="648" y="530" width="504" height="174" rx="14" fill="#163E39"/>
+    <circle cx="688" cy="570" r="7" fill="#A5D9B8"/>
+    <text x="711" y="580" fill="#FFFFFF" font-size="30" font-weight="600" letter-spacing="-0.5">Hermes Agent</text>
+    <text x="674" y="625" fill="#F1F7F3" font-size="22">Forms hypotheses. Follows the evidence.</text>
+    <text x="674" y="658" fill="#D0E4DA" class="body">Investigates failures, warnings, and events</text>
+    <text x="674" y="686" fill="#D0E4DA" class="body">you choose to capture.</text>
+  </g>
+
+  <path d="M900 708V742" stroke="#25756D" class="line" marker-start="url(#arrow-teal)" marker-end="url(#arrow-teal)"/>
+  <g id="investigation-tools">
+    <rect x="648" y="748" width="504" height="156" rx="14" fill="#FFFFFF" stroke="#B8CCC4"/>
+    <use href="#tools" x="674" y="771" width="30" height="30" stroke="#25756D" class="icon"/>
+    <text x="720" y="797" class="label ink">Authorized investigation tools</text>
+    <text x="674" y="837" class="body muted">Search logs · trace activity · inspect resources</text>
+    <path d="M674 854H1126" stroke="#D7E2DB"/>
+    <text x="674" y="882" class="small" fill="#316A62">Trusted access controls · bounded permissions</text>
+  </g>
+
+  <path d="M556 841H644" stroke="#25756D" class="line" marker-start="url(#arrow-teal)" marker-end="url(#arrow-teal)"/>
+  <text x="600" y="789" text-anchor="middle" class="caption" fill="#316A62">Query</text>
+  <text x="600" y="812" text-anchor="middle" class="caption" fill="#316A62">&amp; inspect</text>
+
+  <!-- Findings and actions flow out; conversation is explicitly two-way. -->
+  <path d="M1152 560H1187Q1202 560 1202 545V410Q1202 395 1217 395H1246" stroke="#25756D" class="line" marker-end="url(#arrow-teal)"/>
+  <path d="M1157 607H1244" stroke="#25756D" class="line" marker-start="url(#arrow-teal)" marker-end="url(#arrow-teal)"/>
+  <path d="M1152 655H1187Q1202 655 1202 670V802Q1202 817 1217 817H1246" stroke="#25756D" class="line" marker-end="url(#arrow-teal)"/>
+
+  <g id="findings-and-notifications">
+    <rect x="1248" y="320" width="480" height="150" rx="14" fill="#FFFFFF" stroke="#D4DCD7"/>
+    <use href="#notification" x="1274" y="345" width="30" height="30" stroke="#445C60" class="icon"/>
+    <text x="1320" y="371" class="label ink">Findings &amp; notifications</text>
+    <text x="1274" y="411" class="body muted">What failed, why, and the supporting evidence.</text>
+    <text x="1274" y="443" class="body muted">Failures &amp; warnings → your chosen channel.</text>
+  </g>
+
+  <g id="interactive-chat">
+    <rect x="1248" y="520" width="480" height="174" rx="14" fill="#E9F1EC" stroke="#B8CCC4"/>
+    <use href="#chat" x="1274" y="545" width="30" height="30" stroke="#25756D" class="icon"/>
+    <text x="1320" y="571" class="label ink">Chat with the agent</text>
+    <text x="1274" y="612" class="body ink">Ask questions. Explore evidence. Follow up.</text>
+    <text x="1274" y="645" class="body muted">“Why did this load fail?”</text>
+    <text x="1274" y="675" class="body muted">“Check the affected resources.”</text>
+  </g>
+
+  <g id="automated-remediation">
+    <rect x="1248" y="744" width="480" height="160" rx="14" fill="#FFFFFF" stroke="#D4DCD7"/>
+    <use href="#bolt" x="1274" y="769" width="30" height="30" stroke="#B65D27" class="icon"/>
+    <text x="1320" y="795" class="label ink">Immediate remediation</text>
+    <text x="1274" y="837" class="body muted">Automatically run the actions you define</text>
+    <text x="1274" y="868" class="body muted">in YAML, within explicitly granted access.</text>
+  </g>
+
+  <g id="remediation-return-path">
+    <path d="M1488 904V942Q1488 952 1478 952H322Q312 952 312 942V908" stroke="#B65D27" class="line" stroke-dasharray="6 6" marker-end="url(#arrow-orange)"/>
+    <rect x="697" y="937" width="406" height="30" rx="8" fill="#FFFFFF"/>
+    <text x="900" y="958" text-anchor="middle" class="small" fill="#9D5027">Execute only your configured, permitted actions</text>
+  </g>
+
+  <g id="your-yaml-configuration">
+    <path d="M72 996H1728" stroke="#C9D4CD"/>
+    <text x="72" y="1034" class="label ink">Your YAML defines what matters.</text>
+    <text x="72" y="1075" class="body ink" font-weight="600">Sources &amp; event rules</text>
+    <text x="72" y="1106" class="body muted">Where to listen. What to capture.</text>
+    <text x="648" y="1075" class="body ink" font-weight="600">Investigation guidance</text>
+    <text x="648" y="1106" class="body muted">Context, objectives, and what to examine.</text>
+    <text x="1248" y="1075" class="body ink" font-weight="600">Notifications &amp; allowed actions</text>
+    <text x="1248" y="1106" class="body muted">When to tell you. When to act.</text>
+  </g>
+
+</svg>

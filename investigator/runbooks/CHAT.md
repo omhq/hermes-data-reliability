@@ -25,6 +25,9 @@ Include exact S3 references, CloudWatch or CloudTrail event references, and rece
 in answers. This instruction does not replace programmatic citation checks.
 Copy references from successful responses' `references` lists. A listing
 establishes presence or absence, not an object's contents.
+For S3 listings, cite returned object references rather than a bucket or
+directory prefix from the request or response source. Do not cite responses
+with an empty `references` list or construct your own references.
 Do not make more tool requests after the session's call or byte budget is
 exhausted; explain which evidence could not be collected.
 
