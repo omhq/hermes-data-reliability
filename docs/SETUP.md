@@ -26,10 +26,7 @@ aws sts get-caller-identity --profile YOUR_PROFILE --query Account --output text
 
 For a new checkout, copy each root's `terraform.tfvars.example` to its ignored
 `terraform.tfvars`. Configure `aws_profile`, `expected_account_id`, `aws_region`,
-and `project_name` independently. Preserve existing inputs and state; for an
-existing combined installation, follow
-[state separation](RECOVERY.md#separate-a-combined-terraform-state) before planning
-either root.
+and `project_name` independently.
 
 The optional synthetic pipeline requires S3, SQS, IAM, Lambda, Scheduler,
 CloudWatch, and `iam:PassRole`. Keep generation disabled until smoke tests pass:
