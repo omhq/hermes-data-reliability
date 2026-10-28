@@ -121,7 +121,8 @@ investigator/
   executor/               Trusted authorization, reads, audit, receipts
   plugins/                Hermes tools and socket client
 evals/                    Manual live scenarios and runners
-infra/                    Terraform and bootstrap
+infra/aws-agent/          Agent Terraform, network, IAM, health, and backups
+infra/aws-pipeline/       Synthetic pipeline Terraform
 tests/                    Investigator and pipeline regression tests
 ```
 

@@ -11,7 +11,7 @@ cd /path/to/hermes-data-reliability
 ```
 
 Substitute your profile, region, and key below; the profile must match
-`infra/terraform.tfvars`. Keep keys, variables, and state out of Git.
+`infra/aws-agent/terraform.tfvars`. Keep keys, variables, and state out of Git.
 
 If AWS reports an expired SSO session:
 
@@ -23,7 +23,7 @@ Get the instance ID from Terraform and its live IP from AWS; stop/start can
 change the address:
 
 ```bash
-lab_instance_id=$(terraform -chdir=infra output -raw instance_id)
+lab_instance_id=$(terraform -chdir=infra/aws-agent output -raw instance_id)
 lab_ip=$(aws ec2 describe-instances \
   --profile YOUR_PROFILE --region us-east-1 \
   --instance-ids "$lab_instance_id" \
@@ -51,8 +51,8 @@ verified connection, then `yes`. Never bypass checking or blindly remove warning
 Terraform also exposes cached addresses:
 
 ```bash
-terraform -chdir=infra output -raw public_ip
-terraform -chdir=infra output -raw ssh_destination
+terraform -chdir=infra/aws-agent output -raw public_ip
+terraform -chdir=infra/aws-agent output -raw ssh_destination
 ```
 
 These reflect the last refresh. Prefer live lookup after stop/start; use current
@@ -100,7 +100,7 @@ not an AWS login. Direct SSH needs `ssh -t ... 'sudo labctl chat'`.
 
 ## Pause or resume synthetic data generation
 
-On your workstation, edit the ignored `infra/terraform.tfvars`:
+On your workstation, edit the ignored `infra/aws-pipeline/terraform.tfvars`:
 
 ```hcl
 pipeline_schedule_enabled = false # true to resume
@@ -109,9 +109,9 @@ pipeline_schedule_enabled = false # true to resume
 Review and apply the saved plan:
 
 ```bash
-terraform -chdir=infra plan -out=lab.tfplan
-terraform -chdir=infra show lab.tfplan
-terraform -chdir=infra apply lab.tfplan
+terraform -chdir=infra/aws-pipeline plan -out=pipeline.tfplan
+terraform -chdir=infra/aws-pipeline show pipeline.tfplan
+terraform -chdir=infra/aws-pipeline apply pipeline.tfplan
 ```
 
 A schedule-only plan should change only Scheduler state; resolve other changes
@@ -119,6 +119,9 @@ first. The example defaults to `false`; local inputs set the deployment value.
 Check live state in AWS, since Terraform outputs may be stale.
 
 ## Read logs and results on EC2
+
+For pipeline AWS commands, use the profile and region configured in
+`infra/aws-pipeline/terraform.tfvars`. Agent commands use the agent root's inputs.
 
 Follow producer uploads from your **workstation**:
 
@@ -143,7 +146,7 @@ The final per-file `status` drives collector detection.
 From the **workstation repository root**, inspect deployment identifiers:
 
 ```bash
-terraform -chdir=infra output -json pipeline
+terraform -chdir=infra/aws-pipeline output -json pipeline
 ```
 
 Use `queue_url` or `dead_letter_url` to inspect without consuming messages:
@@ -192,8 +195,8 @@ investigations; CloudWatch health alarm emails are disabled.
 ## Agent report emails
 
 Configure the recipient with `alert_email` in your workstation's ignored
-`infra/terraform.tfvars`, then review and apply the Terraform plan and deploy
-the runtime using the [setup guide](SETUP.md). Confirm the SNS subscription
+`infra/aws-agent/terraform.tfvars`, then review and apply the Terraform plan and
+deploy the runtime using the [setup guide](SETUP.md). Confirm the SNS subscription
 email for a new recipient. The existing subscription is reused when unchanged.
 
 On EC2, check delivery:

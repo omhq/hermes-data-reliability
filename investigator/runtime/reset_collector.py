@@ -1,13 +1,13 @@
 import os
-import fcntl
 import json
+import time
+import fcntl
 import logging
-import argparse
 import shutil
 import sqlite3
+import argparse
 import subprocess
 import tempfile
-import time
 
 from collections.abc import Generator
 from contextlib import closing, contextmanager
@@ -23,11 +23,12 @@ from investigator.collector.reports import export
 from investigator.logging_config import configure_logging
 
 from . import control
+from .notification_store import LOCK_NAME, PRESERVED_FILES
 from .sessions import SessionUnavailable, investigation_lock
 
 ROOT = Path("/srv/hermes-lab")
 APPROVED = Path("/etc/hermes-lab/executor.json")
-LOCK_FILES = {".poll.lock", ".investigation.lock"}
+LOCK_FILES = {".poll.lock", ".investigation.lock", LOCK_NAME}
 LOGGER = logging.getLogger(__name__)
 
 
@@ -80,6 +81,7 @@ def prepare_findings(
 
             for source_id, source in definition["sources"].items():
                 key = source_key(source_id, source, account_id)
+
                 ledger.execute(
                     """
                     INSERT INTO source_progress
@@ -147,7 +149,7 @@ def replace_findings(root: Path, stage: Path, since_ms: int, was_running: bool) 
 
     try:
         for path in findings.iterdir():
-            if path.name not in LOCK_FILES:
+            if path.name not in LOCK_FILES | PRESERVED_FILES:
                 path.rename(saved / path.name)
                 moved.append(path.name)
 
@@ -205,8 +207,12 @@ def reset_collector(since: str = "now", observations: Path | None = None) -> Pat
             try:
                 control.pause()
 
-                with poll_lock(findings):
-                    archive = replace_findings(ROOT, stage, since_ms, was_running)
+                with investigation_lock(findings / LOCK_NAME) as notification_lock:
+                    if not notification_lock:
+                        raise SessionUnavailable("A report delivery is still active")
+
+                    with poll_lock(findings):
+                        archive = replace_findings(ROOT, stage, since_ms, was_running)
             finally:
                 if was_running:
                     control.start_services()

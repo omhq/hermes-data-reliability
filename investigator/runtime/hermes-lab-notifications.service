@@ -1,0 +1,18 @@
+[Unit]
+Description=Email completed Hermes investigations with incident metadata
+After=network-online.target
+PartOf=hermes-lab.target
+ConditionPathExists=/srv/hermes-lab/operations.json
+ConditionPathExists=/srv/hermes-lab/ops/enabled
+
+[Service]
+Type=oneshot
+User=ec2-user
+Group=ec2-user
+UMask=0077
+WorkingDirectory=/srv/hermes-lab/code
+ExecStart=/usr/bin/python3.14 -m investigator.runtime.notifications
+TimeoutStartSec=55
+NoNewPrivileges=true
+PrivateTmp=true
+

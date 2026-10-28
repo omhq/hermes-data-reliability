@@ -5,43 +5,82 @@ Run workstation commands from the repository root. Requirements: Terraform
 
 ## Provision AWS
 
-Confirm the deployment account:
+The roots have independent inputs, providers, and state:
+
+| Root | Owns |
+| --- | --- |
+| `infra/aws-agent` | EC2, its network, host/executor IAM, report email, health, and backups |
+| `infra/aws-pipeline` | S3, SQS, producer/processor Lambdas, logs, and Scheduler |
+
+Neither root reads the other's configuration, outputs, or state. You can deploy
+and remove either independently. The agent takes explicit existing evidence
+locations; those resources can be provisioned by any system. Its current executor
+supports one bucket's `input/`, `output/`, and `runs/` prefixes and one log group.
+
+Confirm each root's deployment account with its explicitly configured profile:
 
 ```bash
 aws sso login --profile YOUR_PROFILE
 aws sts get-caller-identity --profile YOUR_PROFILE --query Account --output text
 ```
 
-For a new checkout, copy `infra/terraform.tfvars.example` to ignored
-`infra/terraform.tfvars`; preserve existing inputs. Configure:
+For a new checkout, copy each root's `terraform.tfvars.example` to its ignored
+`terraform.tfvars`. Configure `aws_profile`, `expected_account_id`, `aws_region`,
+and `project_name` independently. Preserve existing inputs and state; for an
+existing combined installation, follow
+[state separation](RECOVERY.md#separate-a-combined-terraform-state) before planning
+either root.
+
+The optional synthetic pipeline requires S3, SQS, IAM, Lambda, Scheduler,
+CloudWatch, and `iam:PassRole`. Keep generation disabled until smoke tests pass:
+
+```bash
+terraform -chdir=infra/aws-pipeline init
+terraform -chdir=infra/aws-pipeline fmt -check
+terraform -chdir=infra/aws-pipeline validate
+terraform -chdir=infra/aws-pipeline plan -out=pipeline.tfplan
+terraform -chdir=infra/aws-pipeline show pipeline.tfplan
+```
+
+Review the saved plan before applying:
+
+```bash
+terraform -chdir=infra/aws-pipeline apply pipeline.tfplan
+```
+
+Inspect this pipeline's public identifiers with
+`terraform -chdir=infra/aws-pipeline output -json pipeline`.
+To observe it, explicitly enter its bucket and log group in the agent's inputs;
+there is no automatic connection between the roots.
+
+Configure the agent's inputs:
 
 | Input | Value |
 | --- | --- |
-| `aws_profile`, `expected_account_id` | Explicit profile and allowed account |
-| `aws_region` | Deployment region; default `us-east-1` |
 | `ssh_key_name` | Existing EC2 key pair; alternatively use `ssh_public_key_path` |
 | `ssh_cidr` | Trusted public IPv4 `/32`; wider than `/24` is rejected |
 | `ami_id` | Reviewed Amazon Linux 2023 x86_64 image |
+| `evidence_bucket_name` | Existing authorized evidence bucket |
+| `evidence_log_group` | Existing authorized CloudWatch log group |
 | `alert_email` | Optional recipient for agent reports |
-| `pipeline_schedule_enabled` | `false` until smoke checks pass |
 
-Deployment needs EC2/VPC, IAM, S3, SQS, Lambda, Scheduler, CloudWatch, SNS,
-Backup, KMS, and `iam:PassRole`. Keys/SSO tokens stay outside Terraform;
-gateway/dashboard ports stay closed.
+Agent provisioning requires EC2/VPC, IAM, CloudWatch, SNS, Backup, KMS, and
+`iam:PassRole`. Keys and SSO tokens stay outside Terraform; gateway/dashboard
+ports stay closed.
 
 ```bash
-terraform -chdir=infra init
-terraform -chdir=infra fmt -check
-terraform -chdir=infra validate
-terraform -chdir=infra plan -out=lab.tfplan
-terraform -chdir=infra show lab.tfplan
+terraform -chdir=infra/aws-agent init
+terraform -chdir=infra/aws-agent fmt -check
+terraform -chdir=infra/aws-agent validate
+terraform -chdir=infra/aws-agent plan -out=agent.tfplan
+terraform -chdir=infra/aws-agent show agent.tfplan
 ```
 
-Review account, region, SSH source, and replacements. Pin any discovered AMI
-and regenerate the plan before applying:
+Review account, region, SSH source, evidence access, and replacements. Pin any
+discovered AMI and regenerate the plan before applying:
 
 ```bash
-terraform -chdir=infra apply lab.tfplan
+terraform -chdir=infra/aws-agent apply agent.tfplan
 ```
 
 ## Deploy the runtime
@@ -74,8 +113,9 @@ python3.14 -m investigator.runtime.deploy --ssh-key ~/.ssh/experiment.pem \
   --known-hosts .local/known_hosts --activate
 ```
 
-Deployment uses Terraform's saved SSH destination; review a refresh-only plan
-if stale. Without `--activate`, it only stages source. Activation pulls the pinned
+Deployment and recovery read only `infra/aws-agent` state. Deployment uses its
+saved SSH destination; review a refresh-only plan if stale. Without `--activate`,
+it only stages source. Activation pulls the pinned
 image (15-minute limit), verifies Python (30-second probe), builds tools,
 checkpoints state, and installs the executor. It preserves pause choice,
 authentication, and findings. Unsupported incident database formats stop
@@ -108,8 +148,9 @@ Invoke the producer with unique `scheduled_at` values for `scenario: "success"`
 and `scenario: "malformed"`. Check uploads, SQS, logs, and output/attempt objects
 via [Operations](OPERATIONS.md). The processor expects SQS, not Scheduler payloads.
 
-Set `pipeline_schedule_enabled = true`, review/apply a new plan, and confirm
-SNS, host health, and a completed backup before unattended operation.
+Set `pipeline_schedule_enabled = true` in `infra/aws-pipeline/terraform.tfvars`
+and review/apply a pipeline plan. Agent health, report delivery, and backups
+are configured and checked separately.
 
 ## Access verification
 
@@ -117,7 +158,7 @@ After smoke fixtures exist, run IAM policy checks from the workstation:
 
 ```bash
 mkdir -p .local
-terraform -chdir=infra output -json investigator > .local/investigator.json
+terraform -chdir=infra/aws-agent output -json investigator > .local/investigator.json
 python3.14 -m investigator.runtime.verify_investigator_access policy \
   --profile YOUR_PROFILE --config .local/investigator.json
 ```

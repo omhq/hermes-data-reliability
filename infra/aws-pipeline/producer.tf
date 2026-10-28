@@ -43,7 +43,7 @@ data "archive_file" "producer" {
     for_each = toset(["__init__.py", "logging_config.py"])
     content {
       filename = "pipeline/${source.value}"
-      content  = file("${path.module}/../pipeline/${source.value}")
+      content  = file("${path.module}/../../pipeline/${source.value}")
     }
   }
 
@@ -51,7 +51,7 @@ data "archive_file" "producer" {
     for_each = toset(["__init__.py", "handler.py"])
     content {
       filename = "producer/${source.value}"
-      content  = file("${path.module}/../pipeline/producer/${source.value}")
+      content  = file("${path.module}/../../pipeline/producer/${source.value}")
     }
   }
 }

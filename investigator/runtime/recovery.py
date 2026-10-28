@@ -182,7 +182,7 @@ def main() -> None:
     config = json.loads(
         subprocess.check_output(
             ["terraform", "output", "-json", "operations"],
-            cwd=PROJECT_ROOT / "infra",
+            cwd=PROJECT_ROOT / "infra/aws-agent",
         )
     )
 

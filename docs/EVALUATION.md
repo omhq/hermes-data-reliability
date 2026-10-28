@@ -26,8 +26,8 @@ count. This avoids competing claims without resetting saved state. The stopped
 timer may trigger a health alert.
 
 From the workstation repository root, get `event_source_mapping_id` from
-`terraform -chdir=infra output -json pipeline`. Disable the consumer before
-publishing fixtures:
+`terraform -chdir=infra/aws-pipeline output -json pipeline`. Disable the consumer
+before publishing fixtures:
 
 ```bash
 aws lambda update-event-source-mapping --uuid MAPPING_ID --no-enabled \
@@ -38,7 +38,7 @@ aws lambda get-event-source-mapping --uuid MAPPING_ID \
 
 Wait for `Disabled`; publication rejects active mappings. Notifications remain
 queued. Use the profile and account configured in your local
-`infra/terraform.tfvars`:
+`infra/aws-pipeline/terraform.tfvars`:
 
 ```bash
 python3.14 -m evals.publish_live_cases \

@@ -1,11 +1,10 @@
 variable "aws_profile" {
   description = "Locally authenticated AWS profile; SSO credentials are not Terraform inputs."
   type        = string
-  default     = "default"
 }
 
 variable "aws_region" {
-  description = "Region for the lab and its EC2 key pair."
+  description = "AWS region for this deployment."
   type        = string
   default     = "us-east-1"
 }
@@ -81,51 +80,21 @@ variable "ami_id" {
 }
 
 variable "evidence_bucket_name" {
-  description = "Optional existing lab S3 bucket to inspect; null grants no S3 access."
+  description = "Existing bucket authorized for evidence reads under input/, output/, and runs/."
   type        = string
-  default     = null
 
   validation {
-    condition     = var.evidence_bucket_name == null ? true : can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.evidence_bucket_name))
-    error_message = "Supply a bucket name, without an ARN, path, or wildcard."
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.evidence_bucket_name))
+    error_message = "Supply an existing bucket name without an ARN, path, or wildcard."
   }
 }
 
-variable "evidence_prefixes" {
-  description = "S3 prefixes readable by Hermes. Each must be nonempty and end with /."
-  type        = list(string)
-  default     = ["input/", "output/", "runs/"]
+variable "evidence_log_group" {
+  description = "Existing CloudWatch log group authorized for collection and investigation."
+  type        = string
 
   validation {
-    condition     = length(var.evidence_prefixes) > 0 && alltrue([for prefix in var.evidence_prefixes : can(regex("^[a-zA-Z0-9/_-]+/$", prefix))])
-    error_message = "Use nonempty prefixes ending in /, without wildcards."
+    condition     = can(regex("^[a-zA-Z0-9/._#-]+$", var.evidence_log_group))
+    error_message = "Supply a literal existing log group name without an ARN or wildcard."
   }
 }
-
-variable "evidence_log_groups" {
-  description = "Existing CloudWatch log group names readable by Hermes in this account/region. Empty grants no log access."
-  type        = set(string)
-  default     = []
-
-  validation {
-    condition     = alltrue([for name in var.evidence_log_groups : can(regex("^[a-zA-Z0-9/._#-]+$", name))])
-    error_message = "Supply literal CloudWatch log group names without ARNs or wildcards."
-  }
-}
-variable "pipeline_schedule_enabled" {
-  description = "Enable the producer schedule after the S3/SQS processor and evidence checks pass."
-  type        = bool
-  default     = false
-}
-
-variable "failure_probability" {
-  description = "Probability of a deterministic malformed-input failure per scheduled run."
-  type        = number
-  default     = 0.2
-
-  validation {
-    condition     = var.failure_probability >= 0 && var.failure_probability <= 1
-    error_message = "Use a probability between zero and one."
-  }
-}
-

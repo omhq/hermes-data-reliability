@@ -1,14 +1,15 @@
-import re
 import os
+import re
 import sys
-import json
 import time
-import logging
+import json
 import shutil
+import logging
 import sqlite3
 import argparse
 import subprocess
 
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,12 @@ from investigator.collector.ledger import budget_status
 from investigator.logging_config import configure_logging
 
 from .containers import verify_image_python
+from .notification_store import (
+    DATABASE_NAME,
+)
+from .notification_store import (
+    validate_schema as validate_notifications,
+)
 
 ROOT = Path("/srv/hermes-lab")
 OPS = ROOT / "ops"
@@ -41,6 +48,8 @@ def pause() -> None:
         "stop",
         "hermes-lab-poller.timer",
         "hermes-lab-poller.service",
+        "hermes-lab-notifications.timer",
+        "hermes-lab-notifications.service",
         "hermes-lab-runtime.service",
         "hermes-lab-tools.service",
         "hermes-lab.target",
@@ -80,6 +89,7 @@ def start_services() -> None:
         "hermes-lab-tools.service",
         "hermes-lab-runtime.service",
         "hermes-lab-poller.timer",
+        "hermes-lab-notifications.timer",
     )
 
 
@@ -109,6 +119,7 @@ def status() -> None:
         "hermes-lab.target",
         "hermes-lab-poller.timer",
         "hermes-lab-health.timer",
+        "hermes-lab-notifications.timer",
         "hermes-lab-executor.service",
         "-p",
         "Id",
@@ -155,7 +166,11 @@ def restore_files(source: str | Path) -> None:
     if (OPS / "enabled").exists():
         raise SystemExit("Pause the agent before restoring files")
 
-    for service in ("hermes-lab-runtime.service", "hermes-lab-poller.service"):
+    for service in (
+        "hermes-lab-runtime.service",
+        "hermes-lab-poller.service",
+        "hermes-lab-notifications.service",
+    ):
         result = subprocess.run(["systemctl", "is-active", "--quiet", service])
 
         if result.returncode == 0:
@@ -190,6 +205,18 @@ def restore_files(source: str | Path) -> None:
             with sqlite3.connect(dbpath) as db:
                 if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                     raise SystemExit("Restored SQLite integrity check failed")
+
+        notifications = stage / "findings" / DATABASE_NAME
+
+        if notifications.exists():
+            with closing(sqlite3.connect(notifications)) as delivery_state:
+                validate_notifications(delivery_state)
+
+                if (
+                    delivery_state.execute("PRAGMA integrity_check").fetchone()[0]
+                    != "ok"
+                ):
+                    raise SystemExit("Restored notification integrity check failed")
 
         saved = checkpoint()
 

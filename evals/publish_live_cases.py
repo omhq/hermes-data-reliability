@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from investigator.cli_output import write_json
-from investigator.runtime.deploy import terraform_output
 
 from .live_cases import CASES, make_case
 
@@ -146,7 +145,12 @@ def main() -> None:
     if not re.fullmatch(r"[0-9]{12}", args.account):
         parser.error("Use a twelve-digit account ID")
 
-    config = json.loads(terraform_output("pipeline"))
+    config = json.loads(
+        subprocess.check_output(
+            ["terraform", "output", "-json", "pipeline"],
+            cwd=Path(__file__).resolve().parents[1] / "infra/aws-pipeline",
+        )
+    )
 
     def request(service: str, operation: str, *arguments: str) -> dict[str, Any]:
         return aws_request(

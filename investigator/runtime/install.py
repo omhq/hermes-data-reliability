@@ -1,10 +1,10 @@
 import os
+import time
 import json
 import logging
 import shutil
 import sqlite3
 import subprocess
-import time
 
 from contextlib import closing
 from pathlib import Path
@@ -14,6 +14,12 @@ from investigator.collector.ledger import UnsupportedLedger, validate_schema
 from investigator.logging_config import configure_logging
 
 from .containers import validate_image, verify_image_python
+from .notification_store import (
+    DATABASE_NAME,
+)
+from .notification_store import (
+    validate_schema as validate_notifications,
+)
 from .sessions import SessionUnavailable, investigation_lock
 
 ROOT = Path("/srv/hermes-lab")
@@ -124,6 +130,14 @@ def prepare_networks() -> None:
 def stop_services() -> None:
     # Complete builds before stopping the currently running deployment.
     units = Path("/etc/systemd/system")
+
+    if (units / "hermes-lab-notifications.timer").exists():
+        run(
+            "systemctl",
+            "stop",
+            "hermes-lab-notifications.timer",
+            "hermes-lab-notifications.service",
+        )
 
     if (units / "hermes-lab-health.timer").exists():
         # Its entry point changes with the code symlink during layout upgrades.
@@ -301,6 +315,14 @@ def activate() -> None:
     if database.exists():
         with closing(sqlite3.connect(f"file:{database}?mode=ro", uri=True)) as ledger:
             validate_schema(ledger)
+
+    notifications = ROOT / "findings" / DATABASE_NAME
+
+    if notifications.exists():
+        with closing(
+            sqlite3.connect(f"file:{notifications}?mode=ro", uri=True)
+        ) as delivery_state:
+            validate_notifications(delivery_state)
 
     first = not (OPS / "investigator.runtime.json").exists()
     was_running = (OPS / "enabled").exists()

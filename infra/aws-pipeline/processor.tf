@@ -3,7 +3,6 @@ locals {
 }
 
 resource "aws_cloudwatch_log_group" "processor" {
-  # Preserve the host collector/executor's deployed log-group mapping.
   name              = "/aws/lambda/${var.project_name}-loader"
   retention_in_days = 7
 }
@@ -58,7 +57,7 @@ data "archive_file" "processor" {
     for_each = toset(["__init__.py", "logging_config.py"])
     content {
       filename = "pipeline/${source.value}"
-      content  = file("${path.module}/../pipeline/${source.value}")
+      content  = file("${path.module}/../../pipeline/${source.value}")
     }
   }
 
@@ -72,13 +71,12 @@ data "archive_file" "processor" {
     ])
     content {
       filename = "processor/${source.value}"
-      content  = file("${path.module}/../pipeline/processor/${source.value}")
+      content  = file("${path.module}/../../pipeline/processor/${source.value}")
     }
   }
 }
 
 resource "aws_lambda_function" "processor" {
-  # Reuse the deployed function, log group, and scoped investigator access.
   function_name    = "${var.project_name}-loader"
   role             = aws_iam_role.processor.arn
   runtime          = "python3.14"
@@ -104,28 +102,3 @@ resource "aws_lambda_event_source_mapping" "processor" {
   function_response_types = ["ReportBatchItemFailures"]
 }
 
-resource "aws_iam_role_policy" "synthetic_observer" {
-  name = "read-synthetic-pipeline"
-  role = aws_iam_role.hermes.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect    = "Allow"
-        Action    = ["s3:ListBucket"]
-        Resource  = aws_s3_bucket.evidence.arn
-        Condition = { StringLike = { "s3:prefix" = ["input/*", "output/*", "runs/*"] } }
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject"]
-        Resource = [for prefix in ["input", "output", "runs"] : "${aws_s3_bucket.evidence.arn}/${prefix}/*"]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["logs:FilterLogEvents"]
-        Resource = "${aws_cloudwatch_log_group.processor.arn}:*"
-      }
-    ]
-  })
-}

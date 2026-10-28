@@ -1,0 +1,9 @@
+aws_profile         = "YOUR_PROFILE"
+aws_region          = "us-east-1"
+expected_account_id = "" # Replace with the confirmed deployment account.
+project_name        = "hermes-lab"
+
+# Enable after manual producer and processor smoke tests:
+pipeline_schedule_enabled = false
+failure_probability       = 0.2
+

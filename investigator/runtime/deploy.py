@@ -1,9 +1,9 @@
 import io
 import gzip
+import shlex
 import hashlib
 import argparse
 import logging
-import shlex
 import subprocess
 import tarfile
 
@@ -19,7 +19,7 @@ def terraform_output(name: str, raw: bool = False) -> bytes:
     """Read one nonsecret deployment output from local Terraform state."""
     return subprocess.check_output(
         ["terraform", "output", "-raw" if raw else "-json", name],
-        cwd=PROJECT_ROOT / "infra",
+        cwd=PROJECT_ROOT / "infra/aws-agent",
     )
 
 
@@ -114,7 +114,6 @@ def main() -> None:
     subprocess.run(ssh + [upload_command(release)], input=archive, check=True)
 
     for name, filename in (
-        ("pipeline", "lab.json"),
         ("operations", "operations.json"),
         ("investigator", "investigator.json"),
     ):

@@ -1,3 +1,8 @@
+locals {
+  evidence_bucket_arn    = "arn:${data.aws_partition.current.partition}:s3:::${var.evidence_bucket_name}"
+  evidence_log_group_arn = "arn:${data.aws_partition.current.partition}:logs:${var.aws_region}:${var.expected_account_id}:log-group:${var.evidence_log_group}"
+}
+
 resource "aws_iam_role" "investigator" {
   name                 = "${var.project_name}-investigator"
   description          = "Scoped pipeline evidence reads for the trusted host executor"
@@ -25,7 +30,7 @@ resource "aws_iam_role_policy" "investigator" {
         Sid      = "ListEvidencePrefixes"
         Effect   = "Allow"
         Action   = "s3:ListBucket"
-        Resource = aws_s3_bucket.evidence.arn
+        Resource = local.evidence_bucket_arn
         Condition = {
           StringLike = {
             "s3:prefix" = ["input/*", "output/*", "runs/*"]
@@ -38,14 +43,14 @@ resource "aws_iam_role_policy" "investigator" {
         Action = "s3:GetObject"
         Resource = [
           for prefix in ["input", "output", "runs"] :
-          "${aws_s3_bucket.evidence.arn}/${prefix}/*"
+          "${local.evidence_bucket_arn}/${prefix}/*"
         ]
       },
       {
         Sid      = "ReadPipelineLogs"
         Effect   = "Allow"
         Action   = "logs:FilterLogEvents"
-        Resource = "${aws_cloudwatch_log_group.processor.arn}:*"
+        Resource = "${local.evidence_log_group_arn}:*"
       }
     ]
   })
@@ -74,9 +79,9 @@ output "investigator" {
     host_role_arn    = aws_iam_role.hermes.arn
     account_id       = var.expected_account_id
     region           = var.aws_region
-    bucket           = aws_s3_bucket.evidence.id
-    log_group        = aws_cloudwatch_log_group.processor.name
-    log_group_arn    = aws_cloudwatch_log_group.processor.arn
+    bucket           = var.evidence_bucket_name
+    log_group        = var.evidence_log_group
+    log_group_arn    = local.evidence_log_group_arn
     read_policy_name = aws_iam_role_policy.investigator.name
   }
 }

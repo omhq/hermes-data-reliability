@@ -1,0 +1,11 @@
+[Unit]
+Description=Deliver new Hermes investigation reports each minute
+PartOf=hermes-lab.target
+
+[Timer]
+OnBootSec=90
+OnUnitInactiveSec=60
+Unit=hermes-lab-notifications.service
+
+[Install]
+WantedBy=hermes-lab.target
