@@ -3,8 +3,8 @@ import re
 import pwd
 import grp
 import json
-import logging
 import argparse
+import logging
 import shutil
 import subprocess
 
@@ -60,6 +60,9 @@ def main() -> None:
     release.parent.mkdir(parents=True, exist_ok=True)
 
     if not release.exists():
+        shutil.copytree(
+            args.source / "hermes_cloud_tools", release / "hermes_cloud_tools"
+        )
         shutil.copytree(
             args.source / "investigator/executor",
             release / "investigator/executor",

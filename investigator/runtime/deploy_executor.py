@@ -1,8 +1,8 @@
 import io
 import gzip
-import argparse
 import hashlib
 import logging
+import argparse
 import subprocess
 import tarfile
 
@@ -17,14 +17,18 @@ LOGGER = logging.getLogger(__name__)
 
 def build_archive(root: Path = PROJECT_ROOT) -> bytes:
     output = io.BytesIO()
-    paths = list((root / "investigator/executor").glob("*.py")) + [
-        root / "investigator/__init__.py",
-        root / "investigator/logging_config.py",
-        root / "investigator/cli_output.py",
-        root / "investigator/runtime/__init__.py",
-        root / "investigator/runtime/install_executor.py",
-        root / "investigator/runtime/hermes-lab-executor.service",
-    ]
+    paths = (
+        list((root / "investigator/executor").glob("*.py"))
+        + list((root / "hermes_cloud_tools").glob("*.py"))
+        + [
+            root / "investigator/__init__.py",
+            root / "investigator/logging_config.py",
+            root / "investigator/cli_output.py",
+            root / "investigator/runtime/__init__.py",
+            root / "investigator/runtime/install_executor.py",
+            root / "investigator/runtime/hermes-lab-executor.service",
+        ]
+    )
 
     with tarfile.open(fileobj=output, mode="w") as archive:
         for path in sorted(paths):

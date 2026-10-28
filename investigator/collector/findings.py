@@ -59,6 +59,15 @@ def validate_finding(
 
         seen.add((evidence_id, reference))
 
+        if re.fullmatch(
+            r"cloudtrail-event:[0-9]{12}:[a-z]{2}(?:-[a-z]+)+-[0-9]+:"
+            r"[a-fA-F0-9-]{36}",
+            reference,
+        ):
+            # The host resolves this reference against the session receipt;
+            # a model-supplied event ID alone is never trusted evidence.
+            continue
+
         if logs_only:
             if not reference.startswith("cloudwatch-event:"):
                 raise ValueError("evidence outside log scope")

@@ -1,9 +1,9 @@
 import os
 import re
 import json
-import argparse
 import shutil
 import sqlite3
+import argparse
 import subprocess
 import uuid
 
@@ -97,11 +97,19 @@ def verify(release: Path) -> dict[str, Any]:
         "--env",
         "PYTHONDONTWRITEBYTECODE=1",
         "--env",
+        "PYTHONPATH=/opt/plugin-python:/opt/hermes",
+        "--env",
         "HERMES_BUNDLED_PLUGINS=/nonexistent",
         "--env",
         "HERMES_LAB_CONTEXT_ID",
         "--mount",
-        f"type=bind,src={release}/investigator/plugins/hermes_lab_aws,dst=/opt/lab-plugin,readonly",
+        f"type=bind,src={release}/investigator/tools/hermes_lab_aws,dst=/opt/lab-plugin,readonly",
+        "--mount",
+        f"type=bind,src={release}/investigator/tools/aws_cloudwatch,dst=/opt/cloudwatch-plugin,readonly",
+        "--mount",
+        f"type=bind,src={release}/investigator/tools/aws_cloudtrail,dst=/opt/cloudtrail-plugin,readonly",
+        "--mount",
+        f"type=bind,src={release}/hermes_cloud_tools,dst=/opt/plugin-python/hermes_cloud_tools,readonly",
         "--mount",
         f"type=bind,src={release}/investigator/runtime/verify_plugin_image.py,dst=/verify.py,readonly",
         "--mount",

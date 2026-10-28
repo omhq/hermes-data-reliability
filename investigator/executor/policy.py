@@ -1,10 +1,11 @@
 import re
-import time
 import threading
+import time
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Callable
 
+from .cloudtrail import utc_timestamp
 from .models import (
     ApprovedAction,
     IncidentContext,
@@ -17,7 +18,14 @@ if TYPE_CHECKING:
     from investigator.executor.models import ResolvedRead
 
 
-TOOLS = frozenset({"search_run_logs", "list_run_objects", "read_run_object"})
+TOOLS = frozenset(
+    {
+        "search_run_logs",
+        "list_run_objects",
+        "read_run_object",
+        "lookup_cloudtrail_events",
+    }
+)
 
 
 def require(condition: bool, code: str) -> None:
@@ -99,10 +107,12 @@ class ReadPolicy[Context: IncidentContext | ResourceContext](ABC):
         context: Context,
         limits: PolicyLimits,
         clock: Callable[[], int],
+        cloudtrail_resources: tuple[str, ...] = (),
     ) -> None:
         self._context = context
         self._limits = limits
         self._clock = clock
+        self._cloudtrail_resources = cloudtrail_resources
         self._calls = 0
         self._reserved_bytes = 0
         self._lock = threading.Lock()
@@ -120,6 +130,59 @@ class ReadPolicy[Context: IncidentContext | ResourceContext](ABC):
     @abstractmethod
     def _authorize(self, request: object) -> ApprovedAction:
         """Resolve only the tools supported by this policy's context."""
+
+    def _cloudtrail(
+        self, arguments: dict[str, Any], start: int, end: int, now: int
+    ) -> ResolvedRead:
+        fields(
+            arguments,
+            {"resource_name"},
+            {"start_time_ms", "end_time_ms", "max_events", "max_bytes"},
+        )
+        resource = arguments["resource_name"]
+        require(
+            type(resource) is str and resource in self._cloudtrail_resources,
+            "resource_not_allowed",
+        )
+
+        start = max(start, now - 90 * 86400 * 1000, 1)
+        end = min(end, now)
+        requested_start = integer(
+            arguments.get("start_time_ms", start),
+            start,
+            end - 1,
+            "outside_cloudtrail_window",
+        )
+        requested_end = integer(
+            arguments.get("end_time_ms", end),
+            requested_start + 1,
+            end,
+            "outside_cloudtrail_window",
+        )
+        count = integer(
+            arguments.get("max_events", 20),
+            1,
+            min(50, self._limits.max_events),
+            "invalid_event_limit",
+        )
+
+        return (
+            "cloudtrail",
+            "LookupEvents",
+            {
+                "LookupAttributes": [
+                    {
+                        "AttributeKey": "ResourceName",
+                        "AttributeValue": resource,
+                    }
+                ],
+                "StartTime": utc_timestamp(requested_start),
+                "EndTime": utc_timestamp(requested_end),
+                "MaxResults": count,
+            },
+            None,
+            None,
+        )
 
     def _reserve(
         self, tool: str, resolved: ResolvedRead, max_bytes: int, now: int
@@ -165,9 +228,10 @@ class RequestPolicy(ReadPolicy[IncidentContext]):
         context: IncidentContext,
         limits: PolicyLimits = PolicyLimits(),
         clock: Callable[[], int] = wall_time_ms,
+        cloudtrail_resources: tuple[str, ...] = (),
     ) -> None:
         validate_context(context, limits)
-        self._initialize(context, limits, clock)
+        self._initialize(context, limits, clock, cloudtrail_resources)
 
     def _authorize(self, request: object) -> ApprovedAction:
         now = self._clock()
@@ -187,10 +251,11 @@ class RequestPolicy(ReadPolicy[IncidentContext]):
 
         require(type(arguments) is dict, "invalid_arguments")
 
-        run_id = arguments.get("run_id")
+        if tool != "lookup_cloudtrail_events":
+            run_id = arguments.get("run_id")
 
-        require(type(run_id) is str, "invalid_arguments")
-        require(run_id == context.run_id, "wrong_incident")
+            require(type(run_id) is str, "invalid_arguments")
+            require(run_id == context.run_id, "wrong_incident")
 
         max_bytes = integer(
             arguments.get("max_bytes", limits.default_bytes),
@@ -210,6 +275,14 @@ class RequestPolicy(ReadPolicy[IncidentContext]):
         )
 
     def _resolve(self, tool: str, arguments: dict[str, Any]) -> ResolvedRead:
+        if tool == "lookup_cloudtrail_events":
+            window = self._limits.log_window_seconds * 1000
+            return self._cloudtrail(
+                arguments,
+                self._context.incident_time_ms - window,
+                self._context.incident_time_ms + window,
+                self._clock(),
+            )
         if tool == "search_run_logs":
             return self._logs(arguments)
         if tool == "list_run_objects":

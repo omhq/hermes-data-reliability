@@ -82,6 +82,12 @@ terraform -chdir=infra/aws-agent apply agent.tfplan
 
 ## Deploy the runtime
 
+Select tool packages in `investigator/runtime/config.yaml` before planning the
+agent root. The [tool package guide](ACCESS.md#tool-packages) lists package names,
+CloudTrail resource configuration, and host enforcement.
+Deployment rejects a YAML selection that differs from the saved Terraform
+output before uploading source.
+
 Follow [verified SSH setup](OPERATIONS.md#connect-from-your-workstation).
 On EC2, check bootstrap:
 

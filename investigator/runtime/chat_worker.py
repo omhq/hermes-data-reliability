@@ -9,6 +9,10 @@ import subprocess
 from pathlib import Path
 from types import FrameType
 
+import yaml
+
+from hermes_cloud_tools.packages import ToolPackages
+
 WORKERS = Path("/tmp/hermes-lab-chats")
 
 
@@ -44,12 +48,24 @@ def launch(
     stream_json: bool = False,
     incident: bool = False,
 ) -> int:
+    home = Path(os.environ.get("HERMES_HOME", "/opt/data"))
+
+    try:
+        selection = ToolPackages.from_agent_config(
+            yaml.safe_load((home / "config.yaml").read_text())
+        )
+    except ValueError, TypeError, yaml.YAMLError:
+        raise ValueError("Invalid agent tool package configuration") from None
+
+    if not selection.toolsets:
+        raise ValueError("Enable at least one cloud tool package in config.yaml")
+
     command = [
         "/opt/hermes/.venv/bin/hermes",
         "chat",
         "--cli",
         "--toolsets",
-        "hermes_lab_aws",
+        ",".join(selection.toolsets),
         "--in",
         "/opt/hermes-lab/incident" if incident else "/opt/hermes-lab/chat",
     ]

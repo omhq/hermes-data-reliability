@@ -2,6 +2,7 @@ import json
 
 from typing import Any
 
+from hermes_cloud_tools.packages import ToolPackages
 from investigator.runtime.launch import run_once, stop_on_disconnect
 from investigator.runtime.sessions import (
     COLLECTOR_SOCKET,
@@ -60,6 +61,16 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
         specification = incident_specification(row)
         tools = ["search_run_logs", "list_run_objects", "read_run_object"]
 
+    packages = ToolPackages.from_executor_config(config)
+
+    if "hermes-cloudtrail" in packages.enabled:
+        tools.append("lookup_cloudtrail_events")
+
+    tools = [tool for tool in tools if tool in packages.tools]
+
+    if not tools:
+        raise ValueError("No enabled tool package supports this investigation")
+
     specification["expected_source"] = {
         key: config[key] for key in ("account_id", "region", "log_group")
     }
@@ -76,6 +87,7 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
                 "incident_id": row["id"],
                 "objective": settings["objective"],
                 "authorized_tools": tools,
+                "cloudtrail_resource_names": list(packages.cloudtrail_resources),
                 "scope": specification,
                 "matched_rules": [
                     {

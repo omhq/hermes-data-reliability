@@ -135,6 +135,8 @@ def runtime_arguments(runtime: dict[str, str]) -> list[str]:
         "TERMINAL_SSH_USER=hermes",
         "-e",
         "TERMINAL_SSH_KEY=/run/tool-client/id_ed25519",
+        "-e",
+        "PYTHONPATH=/opt/hermes-lab/python:/opt/hermes",
         "--health-cmd",
         (
             "ssh -i /run/tool-client/id_ed25519 -p 2222 "
@@ -158,7 +160,13 @@ def runtime_arguments(runtime: dict[str, str]) -> list[str]:
         "-v",
         f"{ops}/known_hosts:/etc/ssh/ssh_known_hosts:ro",
         "-v",
-        f"{ROOT}/code/investigator/plugins/hermes_lab_aws:/opt/hermes/plugins/hermes-lab-aws:ro",
+        f"{ROOT}/code/investigator/tools/hermes_lab_aws:/opt/hermes/plugins/hermes-lab-aws:ro",
+        "-v",
+        f"{ROOT}/code/investigator/tools/aws_cloudwatch:/opt/hermes/plugins/hermes-cloudwatch:ro",
+        "-v",
+        f"{ROOT}/code/investigator/tools/aws_cloudtrail:/opt/hermes/plugins/hermes-cloudtrail:ro",
+        "-v",
+        f"{ROOT}/code/hermes_cloud_tools:/opt/hermes-lab/python/hermes_cloud_tools:ro",
         "-v",
         "/run/hermes-lab-executor/requests:/run/hermes-lab-aws:ro",
         "-v",

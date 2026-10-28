@@ -1,8 +1,11 @@
 import re
+import json
 import tempfile
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from hermes_cloud_tools.packages import ToolPackages
 
 from .process import run_json
 from .wire import ExecutionError
@@ -36,6 +39,12 @@ CLI_PARAMETERS = {
         "filterPattern": "--filter-pattern",
         "limit": "--limit",
     },
+    "lookup-events": {
+        "LookupAttributes": "--lookup-attributes",
+        "StartTime": "--start-time",
+        "EndTime": "--end-time",
+        "MaxResults": "--max-results",
+    },
 }
 
 
@@ -56,6 +65,11 @@ def host_environment(region: str) -> dict[str, str]:
 
 
 def validate_config(config: dict[str, Any]) -> None:
+    try:
+        ToolPackages.from_executor_config(config)
+    except ValueError:
+        raise ExecutionError("invalid_configuration") from None
+
     for name, pattern in (
         ("account_id", r"[0-9]{12}"),
         ("region", r"[a-z]{2}(?:-[a-z]+)+-[0-9]+"),
@@ -122,7 +136,12 @@ class AwsBackend:
             raise ExecutionError("invalid_execution_plan")
 
         for name, flag in names.items():
-            command.extend([flag, str(parameters[name])])
+            value = parameters[name]
+
+            if name == "LookupAttributes":
+                value = json.dumps(value, separators=(",", ":"))
+
+            command.extend([flag, str(value)])
 
         if operation == "filter-log-events":
             if parameters["unmask"] is not False:
@@ -192,6 +211,7 @@ class AwsBackend:
             ("s3", "GetObject"): ("s3api", "get-object"),
             ("s3", "ListObjectsV2"): ("s3api", "list-objects-v2"),
             ("logs", "FilterLogEvents"): ("logs", "filter-log-events"),
+            ("cloudtrail", "LookupEvents"): ("cloudtrail", "lookup-events"),
         }
         service, operation = operations[(action.service, action.operation)]
 

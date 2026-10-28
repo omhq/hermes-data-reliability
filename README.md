@@ -84,7 +84,7 @@ With the virtual environment active, run the checks from the repository root:
 python -m ruff format --check .
 python -m ruff check .
 python -m unittest discover -s tests -t . -v
-python -m compileall -q investigator pipeline evals tests
+python -m compileall -q hermes_cloud_tools investigator pipeline evals tests
 git diff --check
 ```
 

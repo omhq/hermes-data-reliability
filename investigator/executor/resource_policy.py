@@ -22,6 +22,9 @@ RESOURCE_TOOLS = frozenset(
         "list_s3_objects",
         "read_s3_object",
         "search_log_events",
+        "lookup_cloudtrail_events",
+        "describe_cloudwatch_scope",
+        "describe_cloudtrail_scope",
     }
 )
 CHAT_LIMITS = PolicyLimits(max_calls=60, total_bytes=4 * 1024 * 1024)
@@ -63,6 +66,7 @@ class ResourcePolicy(ReadPolicy[ResourceContext]):
         context: ResourceContext,
         limits: PolicyLimits = CHAT_LIMITS,
         clock: Callable[[], int] = wall_time_ms,
+        cloudtrail_resources: tuple[str, ...] = (),
     ) -> None:
         require(type(context) is ResourceContext, "invalid_context")
         validate_context(
@@ -88,23 +92,33 @@ class ResourcePolicy(ReadPolicy[ResourceContext]):
             context.prefixes == ("input/", "output/", "runs/"),
             "invalid_context",
         )
-        self._initialize(context, limits, clock)
+        self._initialize(context, limits, clock, cloudtrail_resources)
 
-    def describe_resources(self) -> dict[str, Any]:
+    def describe_resources(self, tool: str = "list_aws_resources") -> dict[str, Any]:
         context = self._context
 
-        return {
+        result = {
             "profile": context.profile,
             "account_id": context.account_id,
             "region": context.region,
             "s3": [{"bucket": context.bucket, "prefixes": list(context.prefixes)}],
             "cloudwatch_log_groups": [context.log_group],
+            "cloudtrail_resource_names": list(self._cloudtrail_resources),
             "start_time_ms": context.start_time_ms,
             "end_time_ms": context.end_time_ms,
             "expires_at_ms": context.expires_at_ms,
             "max_calls": self._limits.max_calls,
             "total_bytes": self._limits.total_bytes,
         }
+
+        if tool == "describe_cloudwatch_scope":
+            result.pop("s3")
+            result.pop("cloudtrail_resource_names")
+        elif tool == "describe_cloudtrail_scope":
+            result.pop("s3")
+            result.pop("cloudwatch_log_groups")
+
+        return result
 
     def _authorize(self, request: object) -> ApprovedAction:
         now = self._clock()
@@ -128,7 +142,11 @@ class ResourcePolicy(ReadPolicy[ResourceContext]):
             "invalid_byte_limit",
         )
 
-        if tool == "list_aws_resources":
+        if tool in {
+            "list_aws_resources",
+            "describe_cloudwatch_scope",
+            "describe_cloudtrail_scope",
+        }:
             fields(arguments, set(), {"max_bytes"})
 
             resolved: ResolvedRead = (
@@ -140,6 +158,13 @@ class ResourcePolicy(ReadPolicy[ResourceContext]):
             )
         elif tool == "search_log_events":
             resolved = self._logs(arguments, now)
+        elif tool == "lookup_cloudtrail_events":
+            resolved = self._cloudtrail(
+                arguments,
+                self._context.start_time_ms,
+                self._context.end_time_ms,
+                now,
+            )
         else:
             resolved = self._s3(tool, arguments, maximum)
 

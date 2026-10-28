@@ -3,6 +3,7 @@ import json
 
 from typing import TYPE_CHECKING, Any
 
+from .cloudtrail import cloudtrail_events
 from .wire import ExecutionError, encode
 
 if TYPE_CHECKING:
@@ -181,5 +182,14 @@ def bounded_result(
         return object_result(action, response, body)
     if action.operation == "ListObjectsV2":
         return listing_result(action, response)
+    if action.operation == "LookupEvents":
+        items, incomplete = cloudtrail_events(action, response)
+        maximum = integer_parameter(action, "MaxResults", 1)
+        data, partial = fit_items("events", items[:maximum], action.max_bytes)
 
-    return logs_result(action, response)
+        return data, incomplete or partial or len(items) > maximum
+
+    if action.operation == "FilterLogEvents":
+        return logs_result(action, response)
+
+    raise ExecutionError("invalid_execution_plan")

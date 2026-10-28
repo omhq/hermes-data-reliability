@@ -47,6 +47,17 @@ def references_for(
             }
             for item in data["events"]
         ]
+    elif action.operation == "LookupEvents":
+        references = [
+            {
+                "reference": (
+                    f"cloudtrail-event:{action.account_id}:{action.region}:"
+                    + item["event_id"]
+                ),
+                "observation": "cloudtrail_event",
+            }
+            for item in data["events"]
+        ]
 
     bounded = []
 

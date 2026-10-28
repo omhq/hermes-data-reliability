@@ -18,6 +18,7 @@ class LogPolicy(ResourcePolicy):
         context: ResourceContext,
         incident_id: str,
         clock: Callable[[], int] = wall_time_ms,
+        cloudtrail_resources: tuple[str, ...] = (),
     ) -> None:
         limits = PolicyLimits()
 
@@ -36,7 +37,7 @@ class LogPolicy(ResourcePolicy):
         )
 
         self.incident_id = incident_id
-        self._initialize(context, limits, clock)
+        self._initialize(context, limits, clock, cloudtrail_resources)
 
     def _authorize(self, request: object) -> ApprovedAction:
         now = self._clock()
@@ -45,7 +46,11 @@ class LogPolicy(ResourcePolicy):
         require(now < self._context.expires_at_ms, "context_expired")
 
         request = fields(request, {"tool", "arguments"}, set())
-        require(request["tool"] == "search_log_events", "unknown_tool")
+        require(
+            type(request["tool"]) is str
+            and request["tool"] in {"search_log_events", "lookup_cloudtrail_events"},
+            "unknown_tool",
+        )
 
         arguments = request["arguments"]
 
@@ -58,7 +63,17 @@ class LogPolicy(ResourcePolicy):
             "invalid_byte_limit",
         )
 
-        return self._reserve(request["tool"], self._logs(arguments, now), maximum, now)
+        if request["tool"] == "lookup_cloudtrail_events":
+            resolved = self._cloudtrail(
+                arguments,
+                self._context.start_time_ms,
+                self._context.end_time_ms,
+                now,
+            )
+        else:
+            resolved = self._logs(arguments, now)
+
+        return self._reserve(request["tool"], resolved, maximum, now)
 
 
 def log_context(

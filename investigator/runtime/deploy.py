@@ -1,14 +1,18 @@
 import io
+import json
 import gzip
-import shlex
-import hashlib
 import argparse
+import hashlib
 import logging
+import shlex
 import subprocess
 import tarfile
 
 from pathlib import Path
 
+import yaml
+
+from hermes_cloud_tools.packages import ToolPackages
 from investigator.logging_config import configure_logging
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -23,12 +27,31 @@ def terraform_output(name: str, raw: bool = False) -> bytes:
     )
 
 
+def validate_tool_configuration(executor_config: bytes) -> None:
+    """Reject stale host capabilities before uploading a new agent config."""
+    try:
+        snapshot = ToolPackages.from_executor_config(json.loads(executor_config))
+        configuration = yaml.safe_load(
+            (PROJECT_ROOT / "investigator/runtime/config.yaml").read_text()
+        )
+        selected = ToolPackages.from_agent_config(configuration)
+    except ValueError, TypeError, yaml.YAMLError:
+        raise ValueError("Invalid agent tool package configuration") from None
+
+    if snapshot != selected:
+        raise ValueError(
+            "Agent YAML differs from Terraform tool configuration; "
+            "review and apply the agent plan before deploying"
+        )
+
+
 def build_archive(root: Path = PROJECT_ROOT) -> bytes:
     """Package source folders, excluding local state and Python bytecode."""
     archive = io.BytesIO()
     paths = []
 
     for folder in (
+        "hermes_cloud_tools",
         "investigator",
         "pipeline",
         "evals",
@@ -105,7 +128,12 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
     destination = terraform_output("ssh_destination", raw=True).decode().strip()
+    outputs = {name: terraform_output(name) for name in ("operations", "investigator")}
+
+    validate_tool_configuration(outputs["investigator"])
+
     ssh = ssh_command(args, destination)
     archive = build_archive()
     release_id = hashlib.sha256(archive).hexdigest()[:20]
@@ -119,7 +147,7 @@ def main() -> None:
     ):
         subprocess.run(
             ssh + [f"umask 077 && cat > /srv/hermes-lab/{filename}"],
-            input=terraform_output(name),
+            input=outputs[name],
             check=True,
         )
 

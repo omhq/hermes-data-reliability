@@ -1,10 +1,9 @@
+import hashlib
+import json
 import os
 import re
-import json
-import time
 import socket
-import hashlib
-
+import time
 from typing import Any
 
 REQUEST_SOCKET = "/run/hermes-lab-aws/requests.sock"
@@ -91,6 +90,7 @@ def validate_response(response: object, arguments: dict[str, Any]) -> dict[str, 
                 "object_listed",
                 "object_absent",
                 "log_event",
+                "cloudtrail_event",
             }
         ):
             raise ClientError("invalid_executor_response")
@@ -188,3 +188,12 @@ def request(tool: str, arguments: object) -> dict[str, Any]:
         return validate_response(decoded, arguments)
     except ValueError, TypeError, RecursionError:
         raise ClientError("invalid_executor_response") from None
+
+
+def invoke(name: str, arguments: object) -> str:
+    try:
+        return encode(request(name, arguments)).decode("ascii")
+    except ClientError as error:
+        return encode({"ok": False, "error": error.code}).decode("ascii")
+    except Exception:
+        return '{"ok":false,"error":"tool_failure"}'

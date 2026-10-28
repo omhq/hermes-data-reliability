@@ -1,8 +1,8 @@
 import io
 import re
 import gzip
-import argparse
 import hashlib
+import argparse
 import subprocess
 import tarfile
 
@@ -12,11 +12,10 @@ from .deploy import PROJECT_ROOT, ssh_command, terraform_output
 
 
 def build_archive(root: Path = PROJECT_ROOT) -> bytes:
-    paths = list((root / "investigator/plugins/hermes_lab_aws").glob("*.py")) + [
+    paths = list((root / "hermes_cloud_tools").glob("*.py")) + [
         root / "investigator/__init__.py",
         root / "investigator/cli_output.py",
-        root / "investigator/plugins/hermes_lab_aws/plugin.yaml",
-        root / "investigator/plugins/__init__.py",
+        root / "investigator/tools/__init__.py",
         root / "investigator/runtime/__init__.py",
         root / "investigator/runtime/image.txt",
         root / "investigator/runtime/verify_hermes_plugin.py",
@@ -24,6 +23,11 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
         root / "investigator/executor/__init__.py",
         root / "investigator/executor/wire.py",
     ]
+
+    for package in ("hermes_lab_aws", "aws_cloudwatch", "aws_cloudtrail"):
+        directory = root / "investigator/tools" / package
+        paths.extend(directory.glob("*.py"))
+        paths.append(directory / "plugin.yaml")
 
     output = io.BytesIO()
 

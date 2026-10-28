@@ -1,13 +1,15 @@
 import re
 import time
 import uuid
-import hashlib
 import secrets
 import threading
+import hashlib
 
 from _thread import LockType
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
+
+from hermes_cloud_tools.packages import ALL_TOOLS, ToolPackages
 
 from .log_policy import LogPolicy, log_context
 from .models import IncidentContext, PolicyDenied, ResourceContext
@@ -48,6 +50,12 @@ class Executor:
         clock: Callable[[], int] = wall_time_ms,
     ) -> None:
         self.config = dict(config)
+        self.packages = ToolPackages.from_executor_config(config)
+        self.cloudtrail_resources = (
+            self.packages.cloudtrail_resources
+            if "hermes-cloudtrail" in self.packages.enabled
+            else ()
+        )
         self.backend = backend
         self.audit = audit
         self.clock = clock
@@ -71,7 +79,12 @@ class Executor:
         if type(request) is dict and "observation_id" in request:
             context, ttl = log_context(self.config, request, self.clock())
             return self._store(
-                LogPolicy(context, request["observation_id"], clock=self.clock),
+                LogPolicy(
+                    context,
+                    request["observation_id"],
+                    clock=self.clock,
+                    cloudtrail_resources=self.cloudtrail_resources,
+                ),
                 context,
                 ttl,
                 owner_uid,
@@ -81,7 +94,11 @@ class Executor:
             require(owner_uid == 0, "resource_scope_forbidden")
             context, ttl = profile_context(self.config, request, self.clock())
             return self._store(
-                ResourcePolicy(context, clock=self.clock),
+                ResourcePolicy(
+                    context,
+                    clock=self.clock,
+                    cloudtrail_resources=self.cloudtrail_resources,
+                ),
                 context,
                 ttl,
                 owner_uid,
@@ -109,7 +126,11 @@ class Executor:
             expires_at_ms=self.clock() + ttl * 1000,
         )
 
-        policy = RequestPolicy(context, clock=self.clock)
+        policy = RequestPolicy(
+            context,
+            clock=self.clock,
+            cloudtrail_resources=self.cloudtrail_resources,
+        )
         return self._store(policy, context, ttl, owner_uid)
 
     def _store(
@@ -227,7 +248,13 @@ class Executor:
                     session.policy, "incident_id", session.context.run_id
                 )
                 receipt["session_id"] = session.session_id
-                action = session.policy.authorize(envelope["request"])
+                request = fields(envelope["request"], {"tool", "arguments"}, set())
+                tool = request["tool"]
+
+                if type(tool) is str and tool in ALL_TOOLS:
+                    require(tool in self.packages.tools, "tool_disabled")
+
+                action = session.policy.authorize(request)
 
                 receipt.update({"tool": action.tool, "operation": action.operation})
 
@@ -255,7 +282,8 @@ class Executor:
                     if not isinstance(session.policy, ResourcePolicy):
                         raise ExecutionError("invalid_execution_plan")
 
-                    response = session.policy.describe_resources()
+                    response = session.policy.describe_resources(action.tool)
+                    response["enabled_tools"] = sorted(self.packages.tools)
                     body = None
                 else:
                     if (

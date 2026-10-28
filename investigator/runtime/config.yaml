@@ -12,6 +12,12 @@ auth:
 plugins:
   enabled:
     - hermes-lab-aws
+    - hermes-cloudwatch
+    # - hermes-cloudtrail
+  entries:
+    hermes-cloudtrail:
+      # Exact CloudTrail ResourceName values; required to enable this package.
+      resource_names: []
 terminal:
   backend: ssh
   persistent_shell: false

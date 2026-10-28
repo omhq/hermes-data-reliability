@@ -6,7 +6,11 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-NAMES = {"search_run_logs", "list_run_objects", "read_run_object"}
+NAMES = {
+    "search_run_logs": "aws_cloudwatch",
+    "list_run_objects": "hermes_lab_aws",
+    "read_run_object": "hermes_lab_aws",
+}
 
 
 def require(condition: object, name: str) -> None:
@@ -22,12 +26,14 @@ def main() -> None:
     (home / "config.yaml").write_text(
         json.dumps(
             {
-                "plugins": {"enabled": ["hermes-lab-aws"]},
+                "plugins": {"enabled": ["hermes-lab-aws", "hermes-cloudwatch"]},
                 "security": {"allow_lazy_installs": False},
             }
         )
     )
     (home / "plugins/hermes-lab-aws").symlink_to("/opt/lab-plugin")
+    (home / "plugins/hermes-cloudwatch").symlink_to("/opt/cloudwatch-plugin")
+    (home / "plugins/hermes-cloudtrail").symlink_to("/opt/cloudtrail-plugin")
 
     # Hermes provides these modules only in the image. Load them after the
     # isolated profile exists and never use the running profile.
@@ -42,20 +48,26 @@ def main() -> None:
     def passed(name: str) -> None:
         checks.append({"check": name, "passed": True})
 
-    for name in NAMES:
+    for name, toolset in NAMES.items():
         entry = registry.get_entry(name, scope=manager.scope_key)
 
         require(
-            entry is not None and entry.toolset == "hermes_lab_aws",
+            entry is not None and entry.toolset == toolset,
             "native_registration",
         )
 
     passed("native_plugin_discovery_and_three_registrations")
 
-    definitions = registry.get_definitions(NAMES, quiet=True)
+    require(
+        registry.get_entry("lookup_cloudtrail_events", scope=manager.scope_key) is None,
+        "disabled_cloudtrail_not_registered",
+    )
+    passed("disabled_cloudtrail_not_registered")
+
+    definitions = registry.get_definitions(set(NAMES), quiet=True)
 
     require(
-        {item["function"]["name"] for item in definitions} == NAMES,
+        {item["function"]["name"] for item in definitions} == set(NAMES),
         "model_visible_schemas",
     )
 

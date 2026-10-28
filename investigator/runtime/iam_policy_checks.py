@@ -2,6 +2,8 @@ import json
 
 from typing import Any, Iterator, Protocol
 
+from hermes_cloud_tools.packages import ToolPackages
+
 
 class AwsRequest(Protocol):
     """A scoped AWS command callable whose response is decoded JSON."""
@@ -21,6 +23,19 @@ def policy_cases(
 ) -> Iterator[tuple[str, str, str | None, bool]]:
     bucket = f"arn:aws:s3:::{config['bucket']}"
     logs = config["log_group_arn"] + ":*"
+    cloudtrail = (
+        "hermes-cloudtrail" in ToolPackages.from_executor_config(config).enabled
+    )
+
+    yield "cloudtrail:LookupEvents", "*", None, cloudtrail
+
+    for action in (
+        "cloudtrail:StartLogging",
+        "cloudtrail:StopLogging",
+        "cloudtrail:DeleteTrail",
+        "cloudtrail:PutEventSelectors",
+    ):
+        yield action, "*", None, False
 
     for prefix in ("input/", "output/", "runs/"):
         yield "s3:ListBucket", bucket, prefix, True
@@ -95,14 +110,22 @@ def verify_role(request: AwsRequest, config: dict[str, Any]) -> dict[str, Any]:
 
     statements = policy["Statement"]
 
-    require(len(statements) == 3, "Unexpected evidence policy statements")
+    cloudtrail = (
+        "hermes-cloudtrail" in ToolPackages.from_executor_config(config).enabled
+    )
+
+    require(
+        len(statements) == 3 + int(cloudtrail),
+        "Unexpected evidence policy statements",
+    )
     require(
         all(statement["Effect"] == "Allow" for statement in statements),
         "Unexpected evidence policy effect",
     )
     require(
         {statement["Action"] for statement in statements}
-        == {"s3:ListBucket", "s3:GetObject", "logs:FilterLogEvents"},
+        == {"s3:ListBucket", "s3:GetObject", "logs:FilterLogEvents"}
+        | ({"cloudtrail:LookupEvents"} if cloudtrail else set()),
         "Unexpected investigator actions",
     )
 
@@ -135,7 +158,12 @@ def verify_policy(request: AwsRequest, config: dict[str, Any]) -> list[dict[str,
                             prefix if prefix is not None else "input/"
                         ],
                         "ContextKeyType": "string",
-                    }
+                    },
+                    {
+                        "ContextKeyName": "aws:RequestedRegion",
+                        "ContextKeyValues": [config["region"]],
+                        "ContextKeyType": "string",
+                    },
                 ]
             ),
         ]

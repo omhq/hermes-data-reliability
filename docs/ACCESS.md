@@ -8,7 +8,7 @@ role, using the group approved in root-owned executor JSON.
 
 1. The host opens a configured resource profile for chat or incident scope for
    automation.
-2. The `hermes_lab_aws` plugin sends raw arguments and a private context token;
+2. An enabled tool package sends raw arguments and a private context token;
    tokens never enter model-visible arguments or prompts.
 3. The executor validates scope, types, expiry, and budget, audits authorization,
    and assumes the investigator role for fifteen minutes.
@@ -18,13 +18,63 @@ Investigator IAM allows only the host role to assume
 the read role. Access is limited to configured resources via `s3:ListBucket`,
 `s3:GetObject`, and `logs:FilterLogEvents`. The SSE-S3 bucket needs no KMS decrypt
 permission. Account-wide discovery, writes, and log unmasking are excluded;
-health/backup permissions are separate.
+health/backup permissions are separate. Enabling CloudTrail adds
+`cloudtrail:LookupEvents` in the configured region. The host restricts those
+lookups to explicitly configured resource names and authorized time windows.
+
+## Tool packages
+
+Each service has its own native Hermes plugin package:
+
+| Package | Source | Toolset |
+| --- | --- | --- |
+| CloudWatch Logs | `investigator/tools/aws_cloudwatch/` | `aws_cloudwatch` |
+| CloudTrail history | `investigator/tools/aws_cloudtrail/` | `aws_cloudtrail` |
+| S3 and resource inventory | `investigator/tools/hermes_lab_aws/` | `hermes_lab_aws` |
+
+Packages share only registration helpers, schemas, and the Unix-socket client in
+`hermes_cloud_tools/`. AWS execution and authorization remain on the host.
+
+Select packages in `investigator/runtime/config.yaml`. For example:
+
+```yaml
+plugins:
+  enabled:
+    - hermes-lab-aws
+    - hermes-cloudwatch
+    - hermes-cloudtrail
+  entries:
+    hermes-cloudtrail:
+      resource_names:
+        - your-function-name
+```
+
+CloudWatch and S3 are enabled by default. CloudTrail requires at least one exact
+resource name. You can enable each package independently; `plugins.disabled`
+takes precedence over `plugins.enabled`. Unknown names and invalid selections
+are rejected. At least one package must be enabled to launch an investigation.
+
+Apply configuration through the [agent setup workflow](SETUP.md): review/apply
+the `infra/aws-agent` plan, then deploy the runtime. Terraform reads this YAML
+to produce the trusted executor selection and optional CloudTrail IAM grant.
+The runtime selects the corresponding toolsets for both chat and automation.
+The host also rejects disabled tools before AWS calls or budget reservations;
+editing the model's writable configuration cannot expand host access.
+
+CloudTrail uses [LookupEvents](https://docs.aws.amazon.com/awscloudtrail/latest/APIReference/API_LookupEvents.html)
+for management-event history from the last 90 days. It reads one page of at most
+50 events, validates account/region/time/resource provenance, and issues evidence
+receipts. Data events, Insights, and Lake queries are outside this package's
+scope. Empty, filtered, paginated, and truncated results do not prove that no
+relevant change occurred.
 
 ## Tools and policies
 
 | Scope | Tool | Result |
 | --- | --- | --- |
 | Resource | `list_aws_resources` | Configured targets and session limits; no AWS discovery |
+| Resource | `describe_cloudwatch_scope` | Approved log group and time window; no AWS call |
+| Resource | `describe_cloudtrail_scope` | Approved resource names and time window; no AWS call |
 | Resource | `search_log_events` | One approved group/time-window page |
 | Resource | `list_s3_objects` | One page within an approved bucket prefix |
 | Resource | `read_s3_object` | Text sample of an approved object |
@@ -32,6 +82,7 @@ health/backup permissions are separate.
 | Incident | `list_run_objects` | Expected run objects or attempt directory |
 | Incident | `read_run_object` | Input, output, or a known attempt-log sample |
 | Log match | `search_log_events` | Approved group within five minutes before/after the matched event |
+| Resource, incident, log match | `lookup_cloudtrail_events` | One management-event page for an approved resource within the session's window |
 
 The host denies tools outside the session scope, resource/role/account/region/
 endpoint overrides, unknown fields, wrong types, expired or missing contexts,
@@ -53,7 +104,8 @@ profiles or caller-selected resources.
 
 Chat's window runs from launch minus lookback through expiry. Requests default
 to 64 KiB, capped at 256 KiB. Listings return one page: at most twenty keys or
-two hundred events. AWS pagination/retries are disabled. The thirty-second
+two hundred CloudWatch events, or fifty CloudTrail events. AWS pagination/retries
+are disabled. The thirty-second
 deadline includes role assumption and cannot exceed expiry; oversized output
 is terminated.
 

@@ -1,0 +1,3 @@
+name: hermes-cloudwatch
+version: 0.1.0
+description: Bounded CloudWatch Logs searches through the trusted host executor.

@@ -88,8 +88,9 @@ Chat and automatic investigations share the Hermes settings in
 `investigator/runtime/config.yaml`: provider, model, reasoning, turn limit,
 run budget, API retries, and recovery cycles. Deployment installs this file at
 `/srv/hermes-lab/hermes/config.yaml`, mounted as `/opt/data/config.yaml` in the
-runtime. The worker lets Hermes load these settings and explicitly selects the
-`hermes_lab_aws` toolset, runbook, and CLI input/output mode. Host access budgets
+runtime. The worker lets Hermes load these settings and selects toolsets from
+`plugins.enabled`, together with the runbook and CLI input/output mode. The
+[tool packages](ACCESS.md#tool-packages) can be enabled independently. Host access budgets
 and outer worker timeouts apply independently of Hermes settings.
 
 | Setting                                  | Current value                                                           |
@@ -119,7 +120,8 @@ investigator/
   runtime/                Deployment, containers, lifecycle, sessions
   collector/              Detection, storage, investigations, reports
   executor/               Trusted authorization, reads, audit, receipts
-  plugins/                Hermes tools and socket client
+  tools/                  Separate S3, CloudWatch, and CloudTrail plugins
+hermes_cloud_tools/       Credential-free plugin transport and selection helpers
 evals/                    Manual live scenarios and runners
 infra/aws-agent/          Agent Terraform, network, IAM, health, and backups
 infra/aws-pipeline/       Synthetic pipeline Terraform
