@@ -24,9 +24,13 @@ def read_incident(findings: Path, run_id: str) -> dict[str, Any] | None:
     if not database_path.exists():
         return None
 
-    with closing(sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)) as db:
+    with closing(
+        sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
+    ) as db:
         db.row_factory = sqlite3.Row
-        row = db.execute("SELECT * FROM incidents WHERE id=?", (run_id,)).fetchone()
+        row = db.execute(
+            "SELECT * FROM incidents WHERE id=?", (run_id,)
+        ).fetchone()
 
     return dict(row) if row else None
 
@@ -45,7 +49,9 @@ def run_case(
     row = read_incident(findings, run_id)
 
     if row and row["attempts"]:
-        raise RuntimeError("This case already consumed an attempt; use fresh fixtures")
+        raise RuntimeError(
+            "This case already consumed an attempt; use fresh fixtures"
+        )
 
     for _ in range(MAX_POLLS):
         if not row or not row["attempts"]:
@@ -70,7 +76,9 @@ def run_case(
             )
 
             if result.returncode:
-                raise RuntimeError("Collector command failed; inspect its host status")
+                raise RuntimeError(
+                    "Collector command failed; inspect its host status"
+                )
 
             row = read_incident(findings, run_id)
 
@@ -96,7 +104,9 @@ def run_case(
         "last_error": row["last_error"],
         "checks": assess_finding(case["case"], report) if report else {},
         "evidence_count": len(report["evidence"]) if report else 0,
-        "evidence_warnings": report.get("evidence_warnings", []) if report else [],
+        "evidence_warnings": report.get("evidence_warnings", [])
+        if report
+        else [],
     }
 
 
@@ -112,11 +122,15 @@ def main() -> None:
         type=Path,
         default=Path("/srv/hermes-lab/observations.yaml"),
     )
-    parser.add_argument("--collector-python", type=Path, default=COLLECTOR_PYTHON)
+    parser.add_argument(
+        "--collector-python", type=Path, default=COLLECTOR_PYTHON
+    )
     parser.add_argument(
         "--findings", type=Path, default=Path("/srv/hermes-lab/findings")
     )
-    parser.add_argument("--code", type=Path, default=Path("/srv/hermes-lab/code"))
+    parser.add_argument(
+        "--code", type=Path, default=Path("/srv/hermes-lab/code")
+    )
 
     args = parser.parse_args()
 

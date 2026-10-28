@@ -1,8 +1,7 @@
 import json
-
 from typing import Any, Iterator, Protocol
 
-from hermes_cloud_tools.packages import ToolPackages
+from investigator.tool_packages import ToolPackages
 
 
 class AwsRequest(Protocol):
@@ -24,7 +23,8 @@ def policy_cases(
     bucket = f"arn:aws:s3:::{config['bucket']}"
     logs = config["log_group_arn"] + ":*"
     cloudtrail = (
-        "hermes-cloudtrail" in ToolPackages.from_executor_config(config).enabled
+        "hermes-cloudtrail"
+        in ToolPackages.from_executor_config(config).enabled
     )
 
     yield "cloudtrail:LookupEvents", "*", None, cloudtrail
@@ -88,7 +88,9 @@ def verify_role(request: AwsRequest, config: dict[str, Any]) -> dict[str, Any]:
     )
     require(role["MaxSessionDuration"] == 3600, "Unexpected session duration")
 
-    attached = request("iam", "list-attached-role-policies", "--role-name", name)
+    attached = request(
+        "iam", "list-attached-role-policies", "--role-name", name
+    )
 
     require(not attached["AttachedPolicies"], "Unexpected managed policies")
 
@@ -111,7 +113,8 @@ def verify_role(request: AwsRequest, config: dict[str, Any]) -> dict[str, Any]:
     statements = policy["Statement"]
 
     cloudtrail = (
-        "hermes-cloudtrail" in ToolPackages.from_executor_config(config).enabled
+        "hermes-cloudtrail"
+        in ToolPackages.from_executor_config(config).enabled
     )
 
     require(
@@ -132,7 +135,9 @@ def verify_role(request: AwsRequest, config: dict[str, Any]) -> dict[str, Any]:
     return {"check": "role_trust_and_policy_inventory", "passed": True}
 
 
-def verify_policy(request: AwsRequest, config: dict[str, Any]) -> list[dict[str, Any]]:
+def verify_policy(
+    request: AwsRequest, config: dict[str, Any]
+) -> list[dict[str, Any]]:
     """Check read and write permissions without executing mutations."""
     results = [verify_role(request, config)]
 

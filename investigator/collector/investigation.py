@@ -1,13 +1,12 @@
 import json
-
 from typing import Any
 
-from hermes_cloud_tools.packages import ToolPackages
 from investigator.runtime.launch import run_once, stop_on_disconnect
 from investigator.runtime.sessions import (
     COLLECTOR_SOCKET,
     InvestigationSession,
 )
+from investigator.tool_packages import ToolPackages
 
 from .definition import validate_investigation
 from .findings import parse_result
@@ -46,7 +45,8 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     event = observation["event"]
 
     if any(
-        observation[key] != config[key] for key in ("account_id", "region", "log_group")
+        observation[key] != config[key]
+        for key in ("account_id", "region", "log_group")
     ):
         raise ValueError("Incident source is no longer authorized")
 
@@ -87,7 +87,9 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
                 "incident_id": row["id"],
                 "objective": settings["objective"],
                 "authorized_tools": tools,
-                "cloudtrail_resource_names": list(packages.cloudtrail_resources),
+                "cloudtrail_resource_names": list(
+                    packages.cloudtrail_resources
+                ),
                 "scope": specification,
                 "matched_rules": [
                     {
@@ -117,7 +119,9 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
 
     with (
         stop_on_disconnect(),
-        InvestigationSession(specification, control_socket=COLLECTOR_SOCKET) as session,
+        InvestigationSession(
+            specification, control_socket=COLLECTOR_SOCKET
+        ) as session,
     ):
         stdout = run_once(session, prompt)
         finding = parse_result(

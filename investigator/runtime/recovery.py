@@ -1,7 +1,6 @@
-import json
 import argparse
+import json
 import subprocess
-
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -45,7 +44,9 @@ def restore_volume(
     request: AwsRequest, config: dict[str, Any], recovery_point: str
 ) -> dict[str, Any]:
     """Verify vault membership before restoring to a separate volume."""
-    account = config.get("account_id") or config["backup_role_arn"].split(":")[4]
+    account = (
+        config.get("account_id") or config["backup_role_arn"].split(":")[4]
+    )
     point = request(
         "backup",
         "describe-recovery-point",
@@ -98,7 +99,9 @@ def perform_action(
     args: argparse.Namespace, config: dict[str, Any]
 ) -> dict[str, Any] | list[dict[str, Any]]:
     request = partial(aws, args.profile, config)
-    account = config.get("account_id") or config["backup_role_arn"].split(":")[4]
+    account = (
+        config.get("account_id") or config["backup_role_arn"].split(":")[4]
+    )
 
     if request("sts", "get-caller-identity")["Account"] != account:
         raise SystemExit("AWS profile resolves to the wrong account")

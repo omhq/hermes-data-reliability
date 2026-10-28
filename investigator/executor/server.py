@@ -1,13 +1,12 @@
-import os
-import json
-import socket
-import logging
 import argparse
+import json
+import logging
+import os
+import socket
 import socketserver
-import threading
 import struct
+import threading
 import uuid
-
 from pathlib import Path
 from typing import Any, cast
 
@@ -196,14 +195,20 @@ def main() -> None:
     (args.socket_dir / "requests.sock").symlink_to("requests/requests.sock")
 
     with Server(args.socket_dir / "control.sock", executor, True) as control:
-        with Server(collector_path, executor, True, collector=True) as collector:
+        with Server(
+            collector_path, executor, True, collector=True
+        ) as collector:
             with Server(
                 requests_dir / "requests.sock", executor, shared=True
             ) as requests:
                 for server in (control, collector):
-                    threading.Thread(target=server.serve_forever, daemon=True).start()
+                    threading.Thread(
+                        target=server.serve_forever, daemon=True
+                    ).start()
 
-                LOGGER.info("Executor ready; scoped read sockets are listening.")
+                LOGGER.info(
+                    "Executor ready; scoped read sockets are listening."
+                )
                 requests.serve_forever()
 
 

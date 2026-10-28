@@ -1,4 +1,4 @@
-from hermes_cloud_tools.client import invoke
+from .client import invoke
 
 
 def describe_cloudwatch_scope(args: object, **kwargs: object) -> str:

@@ -35,7 +35,9 @@ def references_for(
         if action.exact_key and not references and not truncated:
             references.append(
                 {
-                    "reference": (f"s3://{parameters['Bucket']}/{action.exact_key}"),
+                    "reference": (
+                        f"s3://{parameters['Bucket']}/{action.exact_key}"
+                    ),
                     "observation": "object_absent",
                 }
             )
@@ -96,13 +98,19 @@ def select_receipts(session: Session, citations: object) -> dict[str, Any]:
             raise PolicyDenied("unknown_evidence")
 
         matching = [
-            item for item in receipt["references"] if item["reference"] == reference
+            item
+            for item in receipt["references"]
+            if item["reference"] == reference
         ]
 
         require(len(matching) == 1, "evidence_reference_mismatch")
         selected.append(
             {
-                **{key: value for key, value in receipt.items() if key != "references"},
+                **{
+                    key: value
+                    for key, value in receipt.items()
+                    if key != "references"
+                },
                 **matching[0],
             }
         )

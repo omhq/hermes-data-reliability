@@ -1,7 +1,6 @@
 import re
 import threading
 import time
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -41,7 +40,9 @@ def integer(value: object, minimum: int, maximum: int, code: str) -> int:
     return value
 
 
-def fields(value: object, required: set[str], optional: set[str]) -> dict[str, Any]:
+def fields(
+    value: object, required: set[str], optional: set[str]
+) -> dict[str, Any]:
     """Return validated request fields without coercing untrusted values."""
     if type(value) is not dict:
         raise PolicyDenied("invalid_arguments")
@@ -300,13 +301,17 @@ class RequestPolicy(ReadPolicy[IncidentContext]):
         context = self._context
         limits = self._limits
         before = integer(
-            arguments.get("before_seconds", min(300, limits.log_window_seconds)),
+            arguments.get(
+                "before_seconds", min(300, limits.log_window_seconds)
+            ),
             0,
             limits.log_window_seconds,
             "outside_log_window",
         )
         after = integer(
-            arguments.get("after_seconds", min(300, limits.log_window_seconds)),
+            arguments.get(
+                "after_seconds", min(300, limits.log_window_seconds)
+            ),
             0,
             limits.log_window_seconds,
             "outside_log_window",

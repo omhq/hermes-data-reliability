@@ -1,12 +1,11 @@
+import argparse
+import json
 import os
 import re
-import json
 import shutil
 import sqlite3
-import argparse
 import subprocess
 import uuid
-
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
@@ -27,7 +26,9 @@ def install(source: Path, release_id: str) -> Path:
     release.parent.mkdir(parents=True, exist_ok=True)
 
     if not release.exists():
-        shutil.copytree(source, release, ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copytree(
+            source, release, ignore=shutil.ignore_patterns("__pycache__")
+        )
 
     for path in (ROOT, ROOT / "releases", release, *release.rglob("*")):
         os.chown(path, 0, 0)
@@ -61,7 +62,9 @@ def verify(release: Path) -> dict[str, Any]:
 
     image = (release / "investigator/runtime/image.txt").read_text().strip()
 
-    if not re.fullmatch(r"nousresearch/hermes-agent@sha256:[a-f0-9]{64}", image):
+    if not re.fullmatch(
+        r"nousresearch/hermes-agent@sha256:[a-f0-9]{64}", image
+    ):
         raise RuntimeError("Invalid pinned image")
 
     identity = (SOCKETS / "requests.sock").stat()
@@ -97,7 +100,7 @@ def verify(release: Path) -> dict[str, Any]:
         "--env",
         "PYTHONDONTWRITEBYTECODE=1",
         "--env",
-        "PYTHONPATH=/opt/plugin-python:/opt/hermes",
+        "PYTHONPATH=/opt/hermes",
         "--env",
         "HERMES_BUNDLED_PLUGINS=/nonexistent",
         "--env",
@@ -109,8 +112,6 @@ def verify(release: Path) -> dict[str, Any]:
         "--mount",
         f"type=bind,src={release}/investigator/tools/aws_cloudtrail,dst=/opt/cloudtrail-plugin,readonly",
         "--mount",
-        f"type=bind,src={release}/hermes_cloud_tools,dst=/opt/plugin-python/hermes_cloud_tools,readonly",
-        "--mount",
         f"type=bind,src={release}/investigator/runtime/verify_plugin_image.py,dst=/verify.py,readonly",
         "--mount",
         f"type=bind,src={SOCKETS}/requests.sock,dst=/run/hermes-lab-aws/requests.sock,readonly",
@@ -121,7 +122,9 @@ def verify(release: Path) -> dict[str, Any]:
         "/verify.py",
     ]
 
-    opened = call(SOCKETS / "control.sock", {"operation": "open", "context": context})
+    opened = call(
+        SOCKETS / "control.sock", {"operation": "open", "context": context}
+    )
 
     if not opened.get("ok"):
         raise RuntimeError("Could not open verification context")
@@ -148,7 +151,9 @@ def verify(release: Path) -> dict[str, Any]:
             private = Path("/var/lib/hermes-lab-executor/plugin-check.log")
             private.write_text(result.stdout + result.stderr)
             private.chmod(0o600)
-            raise RuntimeError("Plugin check failed; private host log retained")
+            raise RuntimeError(
+                "Plugin check failed; private host log retained"
+            )
 
         report = json.loads(result.stdout)
 
@@ -185,7 +190,9 @@ def main() -> None:
         raise SystemExit("Run verification as root on EC2")
 
     if args.install:
-        release = install(Path(__file__).resolve().parents[2], args.release_id or "")
+        release = install(
+            Path(__file__).resolve().parents[2], args.release_id or ""
+        )
     elif args.release:
         release = args.release.resolve()
     else:

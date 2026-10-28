@@ -1,9 +1,8 @@
+import hashlib
+import json
+import logging
 import os
 import uuid
-import json
-import hashlib
-import logging
-
 from contextlib import closing
 from typing import TYPE_CHECKING, Callable, Protocol, TypedDict
 
@@ -49,7 +48,9 @@ def process_batch(
     identifiers: list[str] = []
 
     for message in messages:
-        identifier = message.get("messageId") if isinstance(message, dict) else None
+        identifier = (
+            message.get("messageId") if isinstance(message, dict) else None
+        )
 
         if not isinstance(identifier, str) or not identifier:
             raise RuntimeError("SQS message identifiers are required")
@@ -136,7 +137,9 @@ def handler(
     bucket = os.environ["EVIDENCE_BUCKET"]
 
     def read_object(key: str, etag: str) -> bytes:
-        response = client.get_object(Bucket=bucket, Key=key, IfMatch=f'"{etag}"')
+        response = client.get_object(
+            Bucket=bucket, Key=key, IfMatch=f'"{etag}"'
+        )
 
         with closing(response["Body"]) as body:
             return body.read(MAX_INPUT_BYTES + 1)

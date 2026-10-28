@@ -1,11 +1,10 @@
-import re
 import json
+import re
 import tempfile
-
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from hermes_cloud_tools.packages import ToolPackages
+from investigator.tool_packages import ToolPackages
 
 from .process import run_json
 from .wire import ExecutionError
@@ -92,7 +91,9 @@ def validate_config(config: dict[str, Any]) -> None:
 
 
 class AwsBackend:
-    def __init__(self, config: dict[str, Any], runner: CliRunner = run_json) -> None:
+    def __init__(
+        self, config: dict[str, Any], runner: CliRunner = run_json
+    ) -> None:
         validate_config(config)
         self.config = dict(config)
         self.runner = runner
@@ -148,11 +149,15 @@ class AwsBackend:
                 raise ExecutionError("invalid_execution_plan")
             command.append("--no-unmask")
         if service == "s3api":
-            command.extend(["--expected-bucket-owner", self.config["account_id"]])
+            command.extend(
+                ["--expected-bucket-owner", self.config["account_id"]]
+            )
         if body:
             command.append(str(body))
 
-        return self.runner(command, env, deadline, body=body, body_limit=body_limit)
+        return self.runner(
+            command, env, deadline, body=body, body_limit=body_limit
+        )
 
     def _identity(self, identity: dict[str, Any], role: str) -> None:
         expected = (
@@ -160,14 +165,16 @@ class AwsBackend:
             f"assumed-role/{role.rsplit('/', 1)[-1]}/"
         )
 
-        if identity.get("Account") != self.config["account_id"] or not identity.get(
-            "Arn", ""
-        ).startswith(expected):
+        if identity.get("Account") != self.config[
+            "account_id"
+        ] or not identity.get("Arn", "").startswith(expected):
             raise ExecutionError("unexpected_aws_identity")
 
     def assume(self, deadline: Deadline) -> dict[str, str]:
         environment = host_environment(self.config["region"])
-        identity = self._call("sts", "get-caller-identity", {}, environment, deadline)
+        identity = self._call(
+            "sts", "get-caller-identity", {}, environment, deadline
+        )
 
         self._identity(identity, self.config["host_role_arn"])
 
@@ -196,7 +203,9 @@ class AwsBackend:
             environment[variable] = value
 
         environment["AWS_EC2_METADATA_DISABLED"] = "true"
-        identity = self._call("sts", "get-caller-identity", {}, environment, deadline)
+        identity = self._call(
+            "sts", "get-caller-identity", {}, environment, deadline
+        )
 
         self._identity(identity, self.config["role_arn"])
         return environment

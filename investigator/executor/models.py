@@ -84,4 +84,6 @@ class ApprovedAction:
 
     def __post_init__(self) -> None:
         # Freeze a copy so mutation of a caller's dictionary cannot change it!
-        object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
+        object.__setattr__(
+            self, "parameters", MappingProxyType(dict(self.parameters))
+        )

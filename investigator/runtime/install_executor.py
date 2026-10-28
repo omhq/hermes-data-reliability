@@ -1,13 +1,12 @@
-import os
-import re
-import pwd
+import argparse
 import grp
 import json
-import argparse
 import logging
+import os
+import pwd
+import re
 import shutil
 import subprocess
-
 from pathlib import Path
 
 from investigator.logging_config import configure_logging
@@ -61,14 +60,16 @@ def main() -> None:
 
     if not release.exists():
         shutil.copytree(
-            args.source / "hermes_cloud_tools", release / "hermes_cloud_tools"
-        )
-        shutil.copytree(
             args.source / "investigator/executor",
             release / "investigator/executor",
         )
 
-        for name in ("__init__.py", "logging_config.py", "cli_output.py"):
+        for name in (
+            "__init__.py",
+            "tool_packages.py",
+            "logging_config.py",
+            "cli_output.py",
+        ):
             shutil.copy2(
                 args.source / "investigator" / name,
                 release / "investigator" / name,

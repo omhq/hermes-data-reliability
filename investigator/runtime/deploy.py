@@ -1,19 +1,18 @@
+import argparse
+import gzip
+import hashlib
 import io
 import json
-import gzip
-import argparse
-import hashlib
 import logging
 import shlex
 import subprocess
 import tarfile
-
 from pathlib import Path
 
 import yaml
 
-from hermes_cloud_tools.packages import ToolPackages
 from investigator.logging_config import configure_logging
+from investigator.tool_packages import ToolPackages
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOGGER = logging.getLogger(__name__)
@@ -30,7 +29,9 @@ def terraform_output(name: str, raw: bool = False) -> bytes:
 def validate_tool_configuration(executor_config: bytes) -> None:
     """Reject stale host capabilities before uploading a new agent config."""
     try:
-        snapshot = ToolPackages.from_executor_config(json.loads(executor_config))
+        snapshot = ToolPackages.from_executor_config(
+            json.loads(executor_config)
+        )
         configuration = yaml.safe_load(
             (PROJECT_ROOT / "investigator/runtime/config.yaml").read_text()
         )
@@ -50,12 +51,7 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
     archive = io.BytesIO()
     paths = []
 
-    for folder in (
-        "hermes_cloud_tools",
-        "investigator",
-        "pipeline",
-        "evals",
-    ):
+    for folder in ("investigator", "pipeline", "evals"):
         paths.extend((root / folder).rglob("*"))
 
     with tarfile.open(fileobj=archive, mode="w") as bundle:
@@ -129,8 +125,12 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    destination = terraform_output("ssh_destination", raw=True).decode().strip()
-    outputs = {name: terraform_output(name) for name in ("operations", "investigator")}
+    destination = (
+        terraform_output("ssh_destination", raw=True).decode().strip()
+    )
+    outputs = {
+        name: terraform_output(name) for name in ("operations", "investigator")
+    }
 
     validate_tool_configuration(outputs["investigator"])
 
@@ -151,7 +151,9 @@ def main() -> None:
             check=True,
         )
 
-    LOGGER.info("Uploaded release %s and nonsecret lab identifiers.", release_id)
+    LOGGER.info(
+        "Uploaded release %s and nonsecret lab identifiers.", release_id
+    )
 
     if args.activate:
         try:

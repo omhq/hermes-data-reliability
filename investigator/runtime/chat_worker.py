@@ -1,17 +1,16 @@
+import argparse
 import os
 import re
+import signal
+import subprocess
 import sys
 import time
-import signal
-import argparse
-import subprocess
-
 from pathlib import Path
 from types import FrameType
 
 import yaml
 
-from hermes_cloud_tools.packages import ToolPackages
+from investigator.tool_packages import ToolPackages
 
 WORKERS = Path("/tmp/hermes-lab-chats")
 
@@ -58,7 +57,9 @@ def launch(
         raise ValueError("Invalid agent tool package configuration") from None
 
     if not selection.toolsets:
-        raise ValueError("Enable at least one cloud tool package in config.yaml")
+        raise ValueError(
+            "Enable at least one cloud tool package in config.yaml"
+        )
 
     command = [
         "/opt/hermes/.venv/bin/hermes",

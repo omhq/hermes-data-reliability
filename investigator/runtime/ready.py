@@ -1,5 +1,5 @@
-import time
 import subprocess
+import time
 
 
 def main() -> None:
@@ -21,7 +21,9 @@ def main() -> None:
 
         time.sleep(1)
 
-    raise SystemExit("Hermes tool connection did not become healthy within 90 seconds")
+    raise SystemExit(
+        "Hermes tool connection did not become healthy within 90 seconds"
+    )
 
 
 if __name__ == "__main__":

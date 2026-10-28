@@ -1,14 +1,13 @@
-import os
-import json
-import time
+import argparse
 import fcntl
+import json
 import logging
+import os
 import shutil
 import sqlite3
-import argparse
 import subprocess
 import tempfile
-
+import time
 from collections.abc import Generator
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -43,7 +42,9 @@ def attempt_history(database: Path) -> list[tuple[str, int]]:
     if not database.exists():
         return []
 
-    with closing(sqlite3.connect(f"file:{database}?mode=ro", uri=True)) as ledger:
+    with closing(
+        sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    ) as ledger:
         validate_schema(ledger)
 
         if ledger.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
@@ -112,12 +113,16 @@ def poll_lock(findings: Path) -> Generator[None]:
         try:
             fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise SessionUnavailable("A collector poll is still active") from None
+            raise SessionUnavailable(
+                "A collector poll is still active"
+            ) from None
 
         yield
 
 
-def replace_findings(root: Path, stage: Path, since_ms: int, was_running: bool) -> Path:
+def replace_findings(
+    root: Path, stage: Path, since_ms: int, was_running: bool
+) -> Path:
     """Archive findings and roll back failed replacements."""
     findings = root / "findings"
     archive = root / "checkpoints" / ("collector-reset-" + str(time.time_ns()))
@@ -170,12 +175,16 @@ def replace_findings(root: Path, stage: Path, since_ms: int, was_running: bool) 
     return archive
 
 
-def reset_collector(since: str = "now", observations: Path | None = None) -> Path:
+def reset_collector(
+    since: str = "now", observations: Path | None = None
+) -> Path:
     """Validate before pausing and retain authentication and running intent."""
     since_ms = start_time(since, int(time.time() * 1000))
     approved = json.loads(APPROVED.read_text())
 
-    with tempfile.TemporaryDirectory(prefix=".collector-reset-", dir=ROOT) as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix=".collector-reset-", dir=ROOT
+    ) as temporary:
         stage = Path(temporary)
         definition = configure(
             approved,
@@ -207,12 +216,18 @@ def reset_collector(since: str = "now", observations: Path | None = None) -> Pat
             try:
                 control.pause()
 
-                with investigation_lock(findings / LOCK_NAME) as notification_lock:
+                with investigation_lock(
+                    findings / LOCK_NAME
+                ) as notification_lock:
                     if not notification_lock:
-                        raise SessionUnavailable("A report delivery is still active")
+                        raise SessionUnavailable(
+                            "A report delivery is still active"
+                        )
 
                     with poll_lock(findings):
-                        archive = replace_findings(ROOT, stage, since_ms, was_running)
+                        archive = replace_findings(
+                            ROOT, stage, since_ms, was_running
+                        )
             finally:
                 if was_running:
                     control.start_services()
@@ -232,7 +247,9 @@ def main() -> None:
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--since", default="now", help="now or a lookback up to 24h")
+    parser.add_argument(
+        "--since", default="now", help="now or a lookback up to 24h"
+    )
     parser.add_argument("--observations", type=Path)
 
     args = parser.parse_args()

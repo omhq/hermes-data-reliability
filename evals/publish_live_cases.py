@@ -45,7 +45,9 @@ def aws_request(
     )
 
     if result.returncode:
-        raise RuntimeError(f"Evaluation AWS operation failed: {service}.{operation}")
+        raise RuntimeError(
+            f"Evaluation AWS operation failed: {service}.{operation}"
+        )
 
     return json.loads(result.stdout) if result.stdout.strip() else {}
 
@@ -65,7 +67,9 @@ def publish(
     )["EventSourceMappings"]
 
     if any(mapping["State"] != "Disabled" for mapping in mappings):
-        raise RuntimeError("Disable SQS consumption before publishing direct fixtures")
+        raise RuntimeError(
+            "Disable SQS consumption before publishing direct fixtures"
+        )
 
     suite_id = uuid.uuid4().hex[:12]
     cases = []
@@ -114,7 +118,9 @@ def publish(
                 [
                     {
                         "timestamp": int(time.time() * 1000),
-                        "message": json.dumps(fixture["incident"], sort_keys=True),
+                        "message": json.dumps(
+                            fixture["incident"], sort_keys=True
+                        ),
                     }
                 ]
             ),
@@ -152,7 +158,9 @@ def main() -> None:
         )
     )
 
-    def request(service: str, operation: str, *arguments: str) -> dict[str, Any]:
+    def request(
+        service: str, operation: str, *arguments: str
+    ) -> dict[str, Any]:
         return aws_request(
             args.profile, config["region"], service, operation, *arguments
         )

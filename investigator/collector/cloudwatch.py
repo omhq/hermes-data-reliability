@@ -1,5 +1,4 @@
 import time
-
 from typing import TYPE_CHECKING, Any
 
 from investigator.executor.models import ApprovedAction
@@ -24,7 +23,9 @@ class CloudWatchReader:
         self.environment = None
 
         now = int(time.time() * 1000)
-        self.deadline = Deadline(60, now + 60000, lambda: int(time.time() * 1000))
+        self.deadline = Deadline(
+            60, now + 60000, lambda: int(time.time() * 1000)
+        )
 
     def read(
         self,
@@ -35,7 +36,9 @@ class CloudWatchReader:
     ) -> tuple[list[dict[str, Any]], str | None]:
         approved = self.backend.config
 
-        if any(source[key] != approved[key] for key in ("region", "log_group")):
+        if any(
+            source[key] != approved[key] for key in ("region", "log_group")
+        ):
             raise ExecutionError("resource_not_allowed")
 
         parameters = {
@@ -80,7 +83,9 @@ class CloudWatchReader:
             if self.environment is None:
                 self.environment = self.backend.assume(self.deadline)
 
-            response, _ = self.backend.execute(action, self.environment, self.deadline)
+            response, _ = self.backend.execute(
+                action, self.environment, self.deadline
+            )
             events, continuation = validate_page(response, start, end)
         except Exception:
             self.audit.write({"status": "collection_failed"})
@@ -122,7 +127,9 @@ def validate_page(
 
     token = response.get("nextToken")
 
-    if token is not None and (type(token) is not str or not 1 <= len(token) <= 4096):
+    if token is not None and (
+        type(token) is not str or not 1 <= len(token) <= 4096
+    ):
         raise ExecutionError("invalid_aws_response")
 
     return events, token

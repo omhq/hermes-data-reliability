@@ -1,5 +1,4 @@
 import logging
-
 from datetime import datetime, timezone
 
 from pipeline.logging_config import log_event as emit_event

@@ -23,11 +23,16 @@ def make_case(name: str, occurrence: str) -> dict[str, Any]:
     logs = [key for key in objects if key.startswith("runs/")]
 
     if len(logs) != 1:
-        raise RuntimeError("Evaluation fixture did not produce one attempt log")
+        raise RuntimeError(
+            "Evaluation fixture did not produce one attempt log"
+        )
 
     incident = objects[logs[0]]
 
-    if incident.get("stage") != "validate" or incident.get("status") != "failed":
+    if (
+        incident.get("stage") != "validate"
+        or incident.get("status") != "failed"
+    ):
         raise RuntimeError("Evaluation fixture was not a validation failure")
 
     incident["evaluation_case"] = name

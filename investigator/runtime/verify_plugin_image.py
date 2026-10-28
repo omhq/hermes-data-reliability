@@ -1,7 +1,6 @@
+import json
 import os
 import sys
-import json
-
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -26,7 +25,9 @@ def main() -> None:
     (home / "config.yaml").write_text(
         json.dumps(
             {
-                "plugins": {"enabled": ["hermes-lab-aws", "hermes-cloudwatch"]},
+                "plugins": {
+                    "enabled": ["hermes-lab-aws", "hermes-cloudwatch"]
+                },
                 "security": {"allow_lazy_installs": False},
             }
         )
@@ -59,7 +60,8 @@ def main() -> None:
     passed("native_plugin_discovery_and_three_registrations")
 
     require(
-        registry.get_entry("lookup_cloudtrail_events", scope=manager.scope_key) is None,
+        registry.get_entry("lookup_cloudtrail_events", scope=manager.scope_key)
+        is None,
         "disabled_cloudtrail_not_registered",
     )
     passed("disabled_cloudtrail_not_registered")
@@ -97,7 +99,8 @@ def main() -> None:
     token = os.environ.pop("HERMES_LAB_CONTEXT_ID")
 
     require(
-        dispatch("read_run_object", kind="input").get("error") == "context_required",
+        dispatch("read_run_object", kind="input").get("error")
+        == "context_required",
         "missing_context",
     )
     passed("missing_context_fails_closed")
@@ -112,7 +115,8 @@ def main() -> None:
 
         require(response.get("ok") and response["data"][field], name)
         require(
-            response["untrusted_evidence"] is True and response["data_bytes"] <= 4096,
+            response["untrusted_evidence"] is True
+            and response["data_bytes"] <= 4096,
             "bounded_evidence_receipt",
         )
         require(token not in json.dumps(response), "private_context_result")
@@ -125,13 +129,17 @@ def main() -> None:
         max_bytes=4096,
     )
 
-    require(response.get("ok") and response["data"]["text"], "known_attempt_log")
+    require(
+        response.get("ok") and response["data"]["text"], "known_attempt_log"
+    )
     passed("known_attempt_log")
 
     response = dispatch("read_run_object", kind="input", max_bytes=64)
 
     require(
-        response.get("ok") and response["truncated"] and response["data_bytes"] <= 64,
+        response.get("ok")
+        and response["truncated"]
+        and response["data_bytes"] <= 64,
         "partial_sample",
     )
     passed("bounded_partial_sample")
@@ -149,7 +157,8 @@ def main() -> None:
     passed("host_rejects_resource_endpoint_context_and_run_overrides")
     os.environ["HERMES_LAB_CONTEXT_ID"] = "0" * 64
     require(
-        dispatch("read_run_object", kind="input").get("error") == "unknown_context",
+        dispatch("read_run_object", kind="input").get("error")
+        == "unknown_context",
         "unknown_context",
     )
     passed("unknown_context_is_not_recreated")
@@ -172,7 +181,9 @@ def main() -> None:
     passed("no_aws_provider_credentials_or_control_socket")
 
     # This file runs alone in the image, stdout is its JSON protocol.
-    sys.stdout.write(json.dumps({"passed": True, "checks": checks}, indent=2) + "\n")
+    sys.stdout.write(
+        json.dumps({"passed": True, "checks": checks}, indent=2) + "\n"
+    )
     sys.stdout.flush()
 
 

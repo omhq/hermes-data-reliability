@@ -1,8 +1,8 @@
+import argparse
 import os
+import subprocess
 import sys
 import time
-import argparse
-import subprocess
 
 from .launch import (
     finish_worker,

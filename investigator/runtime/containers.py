@@ -1,8 +1,7 @@
-import re
-import json
 import argparse
+import json
+import re
 import subprocess
-
 from pathlib import Path
 
 ROOT = Path("/srv/hermes-lab")
@@ -10,7 +9,9 @@ ROOT = Path("/srv/hermes-lab")
 
 def validate_image(image: str) -> None:
     """Accept only reviewed official image digests before using Docker."""
-    if not re.fullmatch(r"nousresearch/hermes-agent@sha256:[a-f0-9]{64}", image):
+    if not re.fullmatch(
+        r"nousresearch/hermes-agent@sha256:[a-f0-9]{64}", image
+    ):
         raise ValueError("Hermes must use an immutable official image digest")
 
 
@@ -135,8 +136,6 @@ def runtime_arguments(runtime: dict[str, str]) -> list[str]:
         "TERMINAL_SSH_USER=hermes",
         "-e",
         "TERMINAL_SSH_KEY=/run/tool-client/id_ed25519",
-        "-e",
-        "PYTHONPATH=/opt/hermes-lab/python:/opt/hermes",
         "--health-cmd",
         (
             "ssh -i /run/tool-client/id_ed25519 -p 2222 "
@@ -166,7 +165,9 @@ def runtime_arguments(runtime: dict[str, str]) -> list[str]:
         "-v",
         f"{ROOT}/code/investigator/tools/aws_cloudtrail:/opt/hermes/plugins/hermes-cloudtrail:ro",
         "-v",
-        f"{ROOT}/code/hermes_cloud_tools:/opt/hermes-lab/python/hermes_cloud_tools:ro",
+        f"{ROOT}/code/investigator/__init__.py:/opt/hermes-lab/investigator/__init__.py:ro",
+        "-v",
+        f"{ROOT}/code/investigator/tool_packages.py:/opt/hermes-lab/investigator/tool_packages.py:ro",
         "-v",
         "/run/hermes-lab-executor/requests:/run/hermes-lab-aws:ro",
         "-v",
@@ -192,7 +193,9 @@ def main() -> None:
     if args.role == "tools":
         raise SystemExit(subprocess.call(tools_arguments(runtime)))
 
-    subprocess.run(runtime_arguments(runtime), check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(
+        runtime_arguments(runtime), check=True, stdout=subprocess.DEVNULL
+    )
 
     # Attach the private tools network before executing the model runtime.
     subprocess.run(
@@ -206,7 +209,9 @@ def main() -> None:
         check=True,
     )
 
-    raise SystemExit(subprocess.call(["docker", "start", "-a", "hermes-lab-runtime"]))
+    raise SystemExit(
+        subprocess.call(["docker", "start", "-a", "hermes-lab-runtime"])
+    )
 
 
 if __name__ == "__main__":

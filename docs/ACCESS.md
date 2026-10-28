@@ -32,8 +32,14 @@ Each service has its own native Hermes plugin package:
 | CloudTrail history | `investigator/tools/aws_cloudtrail/` | `aws_cloudtrail` |
 | S3 and resource inventory | `investigator/tools/hermes_lab_aws/` | `hermes_lab_aws` |
 
-Packages share only registration helpers, schemas, and the Unix-socket client in
-`hermes_cloud_tools/`. AWS execution and authorization remain on the host.
+Each package contains its own registration code, schemas, and Unix-socket client.
+Packages import only the Python standard library and files inside their own
+folder. Copy the complete folder to use a package independently; no shared
+Python package or additional import path is required.
+
+`investigator/tool_packages.py` handles package selection and the host's tool
+allowlist. Plugins do not import it. AWS execution and authorization remain on
+the host.
 
 Select packages in `investigator/runtime/config.yaml`. For example:
 

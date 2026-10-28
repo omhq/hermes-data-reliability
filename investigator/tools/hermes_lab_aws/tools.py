@@ -1,4 +1,4 @@
-from hermes_cloud_tools.client import invoke
+from .client import invoke
 
 
 def list_run_objects(args: object, **kwargs: object) -> str:

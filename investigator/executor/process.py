@@ -1,9 +1,8 @@
 import os
-import time
-import signal
 import selectors
+import signal
 import subprocess
-
+import time
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -81,7 +80,11 @@ def run_json(
                 while selector.get_map() or process.poll() is None:
                     remaining = deadline.remaining()
 
-                    if body and body.exists() and body.stat().st_size > body_limit:
+                    if (
+                        body
+                        and body.exists()
+                        and body.stat().st_size > body_limit
+                    ):
                         raise ExecutionError("upstream_response_too_large")
 
                     for key, _ in selector.select(min(remaining, 0.05)):

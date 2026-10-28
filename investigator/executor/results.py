@@ -1,6 +1,5 @@
-import re
 import json
-
+import re
 from typing import TYPE_CHECKING, Any
 
 from .cloudtrail import cloudtrail_events
@@ -65,7 +64,9 @@ def object_result(
     content_range = metadata.get("ContentRange", "")
     match = re.fullmatch(r"bytes [0-9]+-([0-9]+)/([0-9]+)", content_range)
     partial = (
-        int(match[1]) + 1 < int(match[2]) if match else len(body) >= action.max_bytes
+        int(match[1]) + 1 < int(match[2])
+        if match
+        else len(body) >= action.max_bytes
     )
 
     # Unknown total length at the range limit is conservatively partial.
@@ -102,7 +103,11 @@ def listing_result(
             filtered = True
             continue
 
-        if len(key) > 1024 or type(entry.get("Size")) is not int or entry["Size"] < 0:
+        if (
+            len(key) > 1024
+            or type(entry.get("Size")) is not int
+            or entry["Size"] < 0
+        ):
             raise ExecutionError("invalid_aws_response")
 
         items.append({"key": key, "size": entry["Size"]})
@@ -159,7 +164,9 @@ def logs_result(
         if type(event_id) is not str or len(event_id) > 256:
             raise ExecutionError("invalid_aws_response")
 
-        items.append({"event_id": event_id, "timestamp": timestamp, "message": message})
+        items.append(
+            {"event_id": event_id, "timestamp": timestamp, "message": message}
+        )
 
     data, partial = fit_items("events", items[:maximum], action.max_bytes)
 

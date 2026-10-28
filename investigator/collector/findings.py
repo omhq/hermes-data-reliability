@@ -1,6 +1,5 @@
-import re
 import json
-
+import re
 from typing import TYPE_CHECKING, Any
 
 from investigator.executor.wire import decode

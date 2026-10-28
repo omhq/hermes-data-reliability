@@ -17,7 +17,9 @@ def main() -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     ).returncode:
-        subprocess.run(["iptables", "-I", "DOCKER-USER", "1", *rule[1:]], check=True)
+        subprocess.run(
+            ["iptables", "-I", "DOCKER-USER", "1", *rule[1:]], check=True
+        )
 
 
 if __name__ == "__main__":

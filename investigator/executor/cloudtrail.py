@@ -1,7 +1,6 @@
-import re
 import json
 import math
-
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -45,7 +44,11 @@ def cloudtrail_events(
     events = response.get("Events")
     token = response.get("NextToken")
 
-    if type(events) is not list or token is not None and type(token) is not str:
+    if (
+        type(events) is not list
+        or token is not None
+        and type(token) is not str
+    ):
         raise ExecutionError("invalid_aws_response")
 
     attributes = action.parameters["LookupAttributes"]

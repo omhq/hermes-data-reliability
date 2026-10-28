@@ -1,5 +1,4 @@
 import re
-
 from typing import TYPE_CHECKING, Any, Callable
 
 from .models import IncidentContext, PolicyLimits, ResourceContext
@@ -85,7 +84,9 @@ class ResourcePolicy(ReadPolicy[ResourceContext]):
         require(context.profile == "lab", "invalid_context")
         require(
             type(context.end_time_ms) is int
-            and context.start_time_ms < context.end_time_ms <= context.expires_at_ms,
+            and context.start_time_ms
+            < context.end_time_ms
+            <= context.expires_at_ms,
             "invalid_context",
         )
         require(
@@ -94,14 +95,18 @@ class ResourcePolicy(ReadPolicy[ResourceContext]):
         )
         self._initialize(context, limits, clock, cloudtrail_resources)
 
-    def describe_resources(self, tool: str = "list_aws_resources") -> dict[str, Any]:
+    def describe_resources(
+        self, tool: str = "list_aws_resources"
+    ) -> dict[str, Any]:
         context = self._context
 
         result = {
             "profile": context.profile,
             "account_id": context.account_id,
             "region": context.region,
-            "s3": [{"bucket": context.bucket, "prefixes": list(context.prefixes)}],
+            "s3": [
+                {"bucket": context.bucket, "prefixes": list(context.prefixes)}
+            ],
             "cloudwatch_log_groups": [context.log_group],
             "cloudtrail_resource_names": list(self._cloudtrail_resources),
             "start_time_ms": context.start_time_ms,
@@ -170,23 +175,29 @@ class ResourcePolicy(ReadPolicy[ResourceContext]):
 
         return self._reserve(tool, resolved, maximum, now)
 
-    def _s3(self, tool: str, arguments: dict[str, Any], maximum: int) -> ResolvedRead:
+    def _s3(
+        self, tool: str, arguments: dict[str, Any], maximum: int
+    ) -> ResolvedRead:
         listing = tool == "list_s3_objects"
         key_field = "prefix" if listing else "key"
         optional = {"max_bytes", "max_keys"} if listing else {"max_bytes"}
 
         fields(arguments, {"bucket", key_field}, optional)
-        require(arguments["bucket"] == self._context.bucket, "resource_not_allowed")
+        require(
+            arguments["bucket"] == self._context.bucket, "resource_not_allowed"
+        )
 
         key = arguments[key_field]
 
         require(
             type(key) is str
-            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,1023}", key) is not None,
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,1023}", key)
+            is not None,
             "invalid_object_key",
         )
         require(
-            not any(part in {".", ".."} for part in key.split("/")) and "//" not in key,
+            not any(part in {".", ".."} for part in key.split("/"))
+            and "//" not in key,
             "invalid_object_key",
         )
         require(
@@ -243,7 +254,9 @@ class ResourcePolicy(ReadPolicy[ResourceContext]):
 
         context = self._context
 
-        require(arguments["log_group"] == context.log_group, "resource_not_allowed")
+        require(
+            arguments["log_group"] == context.log_group, "resource_not_allowed"
+        )
 
         start = integer(
             arguments.get("start_time_ms", context.start_time_ms),

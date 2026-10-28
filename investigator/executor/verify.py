@@ -1,10 +1,9 @@
-import os
-import json
-import sqlite3
 import argparse
+import json
+import os
+import sqlite3
 import subprocess
 import time
-
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -52,7 +51,9 @@ def main() -> None:
         ),
     }
 
-    opened = call(SOCKETS / "control.sock", {"operation": "open", "context": context})
+    opened = call(
+        SOCKETS / "control.sock", {"operation": "open", "context": context}
+    )
 
     check(opened.get("ok"), "context_open")
 
@@ -62,7 +63,9 @@ def main() -> None:
     def passed(name: str) -> None:
         checks.append({"check": name, "passed": True})
 
-    def request(tool: str = "read_run_object", **arguments: Any) -> dict[str, Any]:
+    def request(
+        tool: str = "read_run_object", **arguments: Any
+    ) -> dict[str, Any]:
         response = call(
             SOCKETS / "requests.sock",
             {
@@ -134,7 +137,9 @@ def main() -> None:
 
         for _ in range(3):
             check(
-                request("list_run_objects", kind="input", max_bytes=256).get("ok"),
+                request("list_run_objects", kind="input", max_bytes=256).get(
+                    "ok"
+                ),
                 "consume_call_budget",
             )
 
@@ -153,7 +158,9 @@ def main() -> None:
 
         for request_id in request_ids:
             matching = [
-                record for record in records if record.get("request_id") == request_id
+                record
+                for record in records
+                if record.get("request_id") == request_id
             ]
 
             check(bool(matching), "audit_receipt")

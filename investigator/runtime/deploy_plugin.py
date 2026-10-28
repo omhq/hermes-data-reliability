@@ -1,18 +1,17 @@
-import io
-import re
+import argparse
 import gzip
 import hashlib
-import argparse
+import io
+import re
 import subprocess
 import tarfile
-
 from pathlib import Path
 
 from .deploy import PROJECT_ROOT, ssh_command, terraform_output
 
 
 def build_archive(root: Path = PROJECT_ROOT) -> bytes:
-    paths = list((root / "hermes_cloud_tools").glob("*.py")) + [
+    paths = [
         root / "investigator/__init__.py",
         root / "investigator/cli_output.py",
         root / "investigator/tools/__init__.py",
@@ -50,7 +49,9 @@ def main() -> None:
     parser.add_argument("--known-hosts", type=Path, required=True)
 
     args = parser.parse_args()
-    destination = terraform_output("ssh_destination", raw=True).decode().strip()
+    destination = (
+        terraform_output("ssh_destination", raw=True).decode().strip()
+    )
     ssh = ssh_command(args, destination)
     archive = build_archive()
     release_id = hashlib.sha256(archive).hexdigest()[:20]
@@ -62,7 +63,9 @@ def main() -> None:
         raise SystemExit("Unexpected staging path")
 
     try:
-        subprocess.run(ssh + [f"tar -xzf - -C {stage}"], input=archive, check=True)
+        subprocess.run(
+            ssh + [f"tar -xzf - -C {stage}"], input=archive, check=True
+        )
         subprocess.run(
             ssh
             + [

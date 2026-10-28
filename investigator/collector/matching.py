@@ -1,7 +1,6 @@
+import multiprocessing
 import re
 import sys
-import multiprocessing
-
 from multiprocessing.connection import Connection
 from typing import Any, Literal, Self
 
@@ -79,7 +78,8 @@ def worker(connection: Connection, rules: dict[str, dict[str, Any]]) -> None:
 
     try:
         compiled = {
-            name: compile_condition(rule["match"]) for name, rule in rules.items()
+            name: compile_condition(rule["match"])
+            for name, rule in rules.items()
         }
         connection.send({"ok": True})
 

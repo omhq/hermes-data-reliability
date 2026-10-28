@@ -1,7 +1,6 @@
+import fcntl
 import os
 import re
-import fcntl
-
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -61,7 +60,9 @@ class InvestigationSession:
                 {"operation": "open", "context": self.specification},
             )
         except Exception:
-            raise SessionUnavailable("Executor connection unavailable") from None
+            raise SessionUnavailable(
+                "Executor connection unavailable"
+            ) from None
 
         if not opened.get("ok"):
             raise SessionUnavailable("The executor could not open this scope")
@@ -102,13 +103,17 @@ class InvestigationSession:
                 },
             )
         except Exception:
-            raise SessionUnavailable("Evidence verification unavailable") from None
+            raise SessionUnavailable(
+                "Evidence verification unavailable"
+            ) from None
         if (
             not result.get("ok")
             or type(result.get("receipts")) is not list
             or type(result.get("limitations")) is not list
         ):
-            raise SessionUnavailable("Evidence citations could not be verified")
+            raise SessionUnavailable(
+                "Evidence citations could not be verified"
+            )
         return result
 
     def __exit__(self, *_: object) -> None:

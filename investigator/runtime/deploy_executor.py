@@ -1,11 +1,10 @@
-import io
+import argparse
 import gzip
 import hashlib
+import io
 import logging
-import argparse
 import subprocess
 import tarfile
-
 from pathlib import Path
 
 from investigator.logging_config import configure_logging
@@ -17,18 +16,15 @@ LOGGER = logging.getLogger(__name__)
 
 def build_archive(root: Path = PROJECT_ROOT) -> bytes:
     output = io.BytesIO()
-    paths = (
-        list((root / "investigator/executor").glob("*.py"))
-        + list((root / "hermes_cloud_tools").glob("*.py"))
-        + [
-            root / "investigator/__init__.py",
-            root / "investigator/logging_config.py",
-            root / "investigator/cli_output.py",
-            root / "investigator/runtime/__init__.py",
-            root / "investigator/runtime/install_executor.py",
-            root / "investigator/runtime/hermes-lab-executor.service",
-        ]
-    )
+    paths = list((root / "investigator/executor").glob("*.py")) + [
+        root / "investigator/__init__.py",
+        root / "investigator/tool_packages.py",
+        root / "investigator/logging_config.py",
+        root / "investigator/cli_output.py",
+        root / "investigator/runtime/__init__.py",
+        root / "investigator/runtime/install_executor.py",
+        root / "investigator/runtime/hermes-lab-executor.service",
+    ]
 
     with tarfile.open(fileobj=output, mode="w") as archive:
         for path in sorted(paths):
@@ -51,7 +47,9 @@ def main() -> None:
     parser.add_argument("--known-hosts", type=Path, required=True)
 
     args = parser.parse_args()
-    destination = terraform_output("ssh_destination", raw=True).decode().strip()
+    destination = (
+        terraform_output("ssh_destination", raw=True).decode().strip()
+    )
     ssh = ssh_command(args, destination)
     archive = build_archive()
     release_id = hashlib.sha256(archive).hexdigest()[:20]
@@ -62,7 +60,9 @@ def main() -> None:
     ).strip()
 
     try:
-        subprocess.run(ssh + [f"tar -xzf - -C {stage}"], input=archive, check=True)
+        subprocess.run(
+            ssh + [f"tar -xzf - -C {stage}"], input=archive, check=True
+        )
         subprocess.run(
             ssh + [f"umask 077 && cat > {stage}/investigator.json"],
             input=terraform_output("investigator"),
@@ -82,7 +82,9 @@ def main() -> None:
     finally:
         subprocess.run(ssh + [f"rm -rf -- {stage}"], check=False)
 
-    LOGGER.info("Executor release %s deployed on the existing EC2.", release_id)
+    LOGGER.info(
+        "Executor release %s deployed on the existing EC2.", release_id
+    )
 
 
 if __name__ == "__main__":

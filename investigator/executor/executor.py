@@ -1,15 +1,14 @@
+import hashlib
 import re
-import time
-import uuid
 import secrets
 import threading
-import hashlib
-
+import time
+import uuid
 from _thread import LockType
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
-from hermes_cloud_tools.packages import ALL_TOOLS, ToolPackages
+from investigator.tool_packages import ALL_TOOLS, ToolPackages
 
 from .log_policy import LogPolicy, log_context
 from .models import IncidentContext, PolicyDenied, ResourceContext
@@ -34,7 +33,9 @@ class Session:
     session_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     environment: dict[str, str] = field(default_factory=dict, repr=False)
     credentials_until: float = field(default=0, repr=False)
-    receipts: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
+    receipts: dict[str, dict[str, Any]] = field(
+        default_factory=dict, repr=False
+    )
     failures: list[dict[str, Any]] = field(default_factory=list, repr=False)
     lock: LockType = field(default_factory=threading.Lock, repr=False)
 
@@ -73,7 +74,9 @@ class Executor:
             )
 
             request = {
-                key: value for key, value in request.items() if key != "expected_source"
+                key: value
+                for key, value in request.items()
+                if key != "expected_source"
             }
 
         if type(request) is dict and "observation_id" in request:
@@ -112,7 +115,9 @@ class Executor:
 
         attempts = request["attempt_ids"]
 
-        require(type(attempts) is list and len(attempts) <= 20, "invalid_context")
+        require(
+            type(attempts) is list and len(attempts) <= 20, "invalid_context"
+        )
 
         ttl = integer(request.get("ttl_seconds", 300), 1, 300, "invalid_ttl")
         context = IncidentContext(
@@ -148,7 +153,9 @@ class Executor:
             require(len(self.sessions) < 8, "context_limit")
 
             token = secrets.token_hex(32)
-            session = Session(policy, context, time.monotonic() + ttl, owner_uid)
+            session = Session(
+                policy, context, time.monotonic() + ttl, owner_uid
+            )
 
             self.audit.write(
                 {
@@ -173,7 +180,9 @@ class Executor:
             or time.monotonic() >= session.monotonic_end
         )
 
-    def revoke(self, token: str, owner_uid: int | None = None) -> dict[str, bool]:
+    def revoke(
+        self, token: str, owner_uid: int | None = None
+    ) -> dict[str, bool]:
         session = self._session(token, allow_expired=True, owner_uid=owner_uid)
         # Wait for an in-flight call before acknowledging revocation.
         with session.lock, self.lock:
@@ -192,7 +201,9 @@ class Executor:
 
         return {"revoked": True}
 
-    def status(self, token: str, owner_uid: int | None = None) -> dict[str, bool | int]:
+    def status(
+        self, token: str, owner_uid: int | None = None
+    ) -> dict[str, bool | int]:
         session = self._session(token, owner_uid=owner_uid)
 
         return {"active": True, "expires_at_ms": session.context.expires_at_ms}
@@ -213,7 +224,8 @@ class Executor:
         owner_uid: int | None = None,
     ) -> Session:
         require(
-            type(token) is str and re.fullmatch(r"[a-f0-9]{64}", token) is not None,
+            type(token) is str
+            and re.fullmatch(r"[a-f0-9]{64}", token) is not None,
             "unknown_context",
         )
 
@@ -248,7 +260,9 @@ class Executor:
                     session.policy, "incident_id", session.context.run_id
                 )
                 receipt["session_id"] = session.session_id
-                request = fields(envelope["request"], {"tool", "arguments"}, set())
+                request = fields(
+                    envelope["request"], {"tool", "arguments"}, set()
+                )
                 tool = request["tool"]
 
                 if type(tool) is str and tool in ALL_TOOLS:
@@ -256,7 +270,9 @@ class Executor:
 
                 action = session.policy.authorize(request)
 
-                receipt.update({"tool": action.tool, "operation": action.operation})
+                receipt.update(
+                    {"tool": action.tool, "operation": action.operation}
+                )
 
                 source = {
                     "account_id": action.account_id,
@@ -264,7 +280,9 @@ class Executor:
                     **dict(action.parameters),
                 }
 
-                self.audit.write({**receipt, "status": "authorized", "source": source})
+                self.audit.write(
+                    {**receipt, "status": "authorized", "source": source}
+                )
 
                 authorized = True
                 deadline = Deadline(
@@ -368,7 +386,9 @@ class Executor:
         if session is not None:
             with session.lock:
                 if len(session.failures) < 20:
-                    session.failures.append({"request_id": request_id, "code": code})
+                    session.failures.append(
+                        {"request_id": request_id, "code": code}
+                    )
 
         # Audit failure also fails closed. No successful evidence is released.
         try:

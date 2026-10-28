@@ -1,5 +1,4 @@
 import sqlite3
-
 from pathlib import Path
 from typing import TypedDict
 
@@ -101,10 +100,14 @@ def enqueue(
         )
 
 
-def claim(db: sqlite3.Connection, topic_arn: str, now: int) -> sqlite3.Row | None:
+def claim(
+    db: sqlite3.Connection, topic_arn: str, now: int
+) -> sqlite3.Row | None:
     """Spend attempts before publishing and retain them after crashes."""
     with db:
-        last = db.execute("SELECT MAX(last_attempt) FROM deliveries").fetchone()[0]
+        last = db.execute(
+            "SELECT MAX(last_attempt) FROM deliveries"
+        ).fetchone()[0]
 
         if last is not None and now < last + MIN_SEND_INTERVAL:
             return None

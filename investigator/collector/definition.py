@@ -1,7 +1,6 @@
-import re
-import json
 import hashlib
-
+import json
+import re
 from pathlib import Path
 from typing import Any, Collection, Hashable
 
@@ -11,7 +10,9 @@ MAX_DEFINITION_BYTES = 65536
 MAX_RULES = 64
 MAX_CONDITIONS = 128
 SEVERITIES = {"warning": 1, "error": 2, "critical": 3}
-DEFAULT_OBSERVATIONS = Path(__file__).resolve().parents[1] / "runtime/observations.yaml"
+DEFAULT_OBSERVATIONS = (
+    Path(__file__).resolve().parents[1] / "runtime/observations.yaml"
+)
 
 
 class DefinitionError(ValueError):
@@ -30,7 +31,11 @@ class Loader(yaml.SafeLoader):
     ) -> yaml.Node | None:
         self.nodes += 1
 
-        if self.check_event(yaml.AliasEvent) or self.depth >= 16 or self.nodes > 5000:
+        if (
+            self.check_event(yaml.AliasEvent)
+            or self.depth >= 16
+            or self.nodes > 5000
+        ):
             raise DefinitionError("YAML aliases or excessive depth/size")
 
         self.depth += 1
@@ -95,7 +100,9 @@ def name(value: object) -> None:
         raise DefinitionError("Invalid source or rule name")
 
 
-def condition(value: object, depth: int = 0, count: list[int] | None = None) -> None:
+def condition(
+    value: object, depth: int = 0, count: list[int] | None = None
+) -> None:
     count = [0] if count is None else count
     count[0] += 1
 
@@ -108,7 +115,9 @@ def condition(value: object, depth: int = 0, count: list[int] | None = None) -> 
 
     if operator in {"contains", "regex"}:
         if type(operand) is not str or not 1 <= len(operand) <= 1024:
-            raise DefinitionError("Match text must contain 1 to 1024 characters")
+            raise DefinitionError(
+                "Match text must contain 1 to 1024 characters"
+            )
     elif operator in {"any", "all"}:
         if type(operand) is not list or not 1 <= len(operand) <= 32:
             raise DefinitionError("any/all needs 1 to 32 conditions")
@@ -126,7 +135,9 @@ def fingerprint(value: object) -> str:
 
 def validate_investigation(value: object, *, defaults: bool = False) -> None:
     limits = {"objective": 4000, "instructions": 8000}
-    value = fields(value, limits if defaults else (), () if defaults else limits)
+    value = fields(
+        value, limits if defaults else (), () if defaults else limits
+    )
 
     for key, text in value.items():
         maximum = limits[key]
@@ -134,7 +145,9 @@ def validate_investigation(value: object, *, defaults: bool = False) -> None:
         if type(text) is not str or not text.strip() or len(text) > maximum:
             raise DefinitionError("Invalid investigation " + key)
         if len(json.dumps(text, ensure_ascii=False).encode()) > maximum * 2:
-            raise DefinitionError("Investigation " + key + " exceeds byte limit")
+            raise DefinitionError(
+                "Investigation " + key + " exceeds byte limit"
+            )
 
 
 def investigation_settings(
@@ -144,7 +157,9 @@ def investigation_settings(
     return {**definition["investigation"], **source.get("investigation", {})}
 
 
-def validate(value: object, approved: dict[str, Any] | None = None) -> dict[str, Any]:
+def validate(
+    value: object, approved: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Reject unsupported sources and locations before any provider reads."""
     value = fields(value, {"version", "sources", "investigation"})
 
@@ -175,7 +190,9 @@ def validate(value: object, approved: dict[str, Any] | None = None) -> dict[str,
             ("region", r"[a-z]{2}(?:-[a-z]+)+-[0-9]+"),
             ("log_group", r"[./A-Za-z0-9_#-]{1,512}"),
         ):
-            if type(source[key]) is not str or not re.fullmatch(pattern, source[key]):
+            if type(source[key]) is not str or not re.fullmatch(
+                pattern, source[key]
+            ):
                 raise DefinitionError("Invalid CloudWatch location")
             if approved is not None and source[key] != approved.get(key):
                 raise DefinitionError("CloudWatch location is not authorized")
@@ -210,7 +227,10 @@ def validate(value: object, approved: dict[str, Any] | None = None) -> dict[str,
             name(rule_id)
             fields(rule, {"severity", "match"})
 
-            if type(rule["severity"]) is not str or rule["severity"] not in SEVERITIES:
+            if (
+                type(rule["severity"]) is not str
+                or rule["severity"] not in SEVERITIES
+            ):
                 raise DefinitionError("Unsupported severity")
 
             condition(rule["match"])
@@ -221,7 +241,9 @@ def validate(value: object, approved: dict[str, Any] | None = None) -> dict[str,
     return value
 
 
-def load(path: str | Path, approved: dict[str, Any] | None = None) -> dict[str, Any]:
+def load(
+    path: str | Path, approved: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Use safe YAML, rejecting aliases, duplicate keys and deep documents."""
     with Path(path).open("rb") as stream:
         payload = stream.read(MAX_DEFINITION_BYTES + 1)

@@ -120,12 +120,12 @@ investigator/
   runtime/                Deployment, containers, lifecycle, sessions
   collector/              Detection, storage, investigations, reports
   executor/               Trusted authorization, reads, audit, receipts
-  tools/                  Separate S3, CloudWatch, and CloudTrail plugins
-hermes_cloud_tools/       Credential-free plugin transport and selection helpers
+  tools/                  Self-contained S3, CloudWatch, and CloudTrail plugins
+  tool_packages.py        Agent package selection and host tool allowlist
 evals/                    Manual live scenarios and runners
 infra/aws-agent/          Agent Terraform, network, IAM, health, and backups
 infra/aws-pipeline/       Synthetic pipeline Terraform
-tests/                    Investigator and pipeline regression tests
+tests/                    Current behavior and access-boundary checks
 ```
 
 Systemd runs the host collector; Hermes's internal gateway is stopped.

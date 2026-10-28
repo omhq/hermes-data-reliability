@@ -36,13 +36,17 @@ def unique_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def validate_response(response: object, arguments: dict[str, Any]) -> dict[str, Any]:
+def validate_response(
+    response: object, arguments: dict[str, Any]
+) -> dict[str, Any]:
     if type(response) is not dict or type(response.get("ok")) is not bool:
         raise ClientError("invalid_executor_response")
 
     request_id = response.get("request_id")
 
-    if type(request_id) is not str or not re.fullmatch(r"[a-f0-9]{32}", request_id):
+    if type(request_id) is not str or not re.fullmatch(
+        r"[a-f0-9]{32}", request_id
+    ):
         raise ClientError("invalid_executor_response")
 
     if not response["ok"]:

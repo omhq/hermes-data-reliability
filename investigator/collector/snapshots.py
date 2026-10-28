@@ -1,8 +1,7 @@
-import re
 import json
+import re
 import subprocess
 import tempfile
-
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +15,9 @@ def prepare_evidence(row: dict[str, Any], config: dict[str, Any]) -> None:
 
     attempt = incident.get("attempt_id", "")
 
-    if not isinstance(attempt, str) or not re.fullmatch(r"[a-zA-Z0-9-]{1,80}", attempt):
+    if not isinstance(attempt, str) or not re.fullmatch(
+        r"[a-zA-Z0-9-]{1,80}", attempt
+    ):
         raise ValueError("invalid attempt ID")
 
     root = Path(config.get("evidence_path", "/srv/hermes-lab/evidence"))

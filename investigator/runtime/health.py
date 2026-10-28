@@ -1,10 +1,9 @@
 import json
-import time
 import logging
 import shutil
 import sqlite3
 import subprocess
-
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -41,7 +40,9 @@ def backup_fresh(operations: dict[str, Any]) -> bool:
 
         points = json.loads(response.stdout)["RecoveryPoints"]
         dates = [
-            datetime.fromisoformat(p["CreationDate"].replace("Z", "+00:00")).timestamp()
+            datetime.fromisoformat(
+                p["CreationDate"].replace("Z", "+00:00")
+            ).timestamp()
             for p in points
             if p.get("Status") == "COMPLETED"
         ]
@@ -81,7 +82,9 @@ def healthy() -> dict[str, Any]:
                 text=True,
                 timeout=10,
             )
-            state = json.loads(response.stdout) if response.returncode == 0 else {}
+            state = (
+                json.loads(response.stdout) if response.returncode == 0 else {}
+            )
 
             if (
                 not state.get("Running")
@@ -95,7 +98,9 @@ def healthy() -> dict[str, Any]:
             issues.append("poller_timer_stopped")
 
         try:
-            heartbeat = json.loads((ROOT / "findings/last-poll.json").read_text())
+            heartbeat = json.loads(
+                (ROOT / "findings/last-poll.json").read_text()
+            )
             last = heartbeat["completed_at"]
 
             if time.time() - last > 600:
@@ -154,7 +159,9 @@ def main() -> None:
     data = [
         {
             "MetricName": "Healthy",
-            "Dimensions": [{"Name": "InstanceId", "Value": operations["instance_id"]}],
+            "Dimensions": [
+                {"Name": "InstanceId", "Value": operations["instance_id"]}
+            ],
             "Value": int(result["healthy"]),
             "Unit": "Count",
         }

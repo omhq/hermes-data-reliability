@@ -36,7 +36,9 @@ class PipelineFixture:
                 json.loads(line) for line in stdout.getvalue().splitlines()
             )
 
-    def put(self, key: str, payload: dict[str, Any] | list[dict[str, Any]]) -> None:
+    def put(
+        self, key: str, payload: dict[str, Any] | list[dict[str, Any]]
+    ) -> None:
         if self.fail_prefix is not None and key.startswith(self.fail_prefix):
             raise OSError("private provider response")
 

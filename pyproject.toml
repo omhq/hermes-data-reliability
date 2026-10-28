@@ -17,4 +17,4 @@ pythonVersion = "3.14"
 pythonPlatform = "Linux"
 venvPath = "."
 venv = ".venv"
-include = ["hermes_cloud_tools", "investigator", "pipeline", "evals", "tests"]
+include = ["investigator", "pipeline", "evals", "tests"]

@@ -1,5 +1,4 @@
 import argparse
-
 from pathlib import Path
 
 from investigator.cli_output import write_json

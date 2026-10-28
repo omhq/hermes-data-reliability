@@ -1,11 +1,10 @@
+import argparse
+import json
 import os
 import re
-import json
-import argparse
 import subprocess
 import tempfile
 import time
-
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -94,7 +93,8 @@ def verify_identity(
     role_name = role_arn.rsplit("/", 1)[-1]
     partition = role_arn.split(":")[1]
     expected = (
-        f"arn:{partition}:sts::{config['account_id']}:" f"assumed-role/{role_name}/"
+        f"arn:{partition}:sts::{config['account_id']}:"
+        f"assumed-role/{role_name}/"
     )
 
     require(identity["Account"] == config["account_id"], "Wrong AWS account")
@@ -122,7 +122,9 @@ def denied_read(
     raise ValueError(f"Unexpectedly allowed {service}.{action}")
 
 
-def verify_reads(request: AwsRequest, config: dict[str, Any]) -> list[dict[str, Any]]:
+def verify_reads(
+    request: AwsRequest, config: dict[str, Any]
+) -> list[dict[str, Any]]:
     results = []
     bucket = config["bucket"]
 
@@ -237,7 +239,9 @@ def verify_live(config: dict[str, Any]) -> list[dict[str, Any]]:
     environment = host_environment()
     host = partial(aws_request, config, environment=environment)
 
-    verify_identity(host("sts", "get-caller-identity"), config, config["host_role_arn"])
+    verify_identity(
+        host("sts", "get-caller-identity"), config, config["host_role_arn"]
+    )
 
     response = host(
         "sts",
@@ -260,7 +264,9 @@ def verify_live(config: dict[str, Any]) -> list[dict[str, Any]]:
     )
     request = partial(aws_request, config, environment=environment)
 
-    verify_identity(request("sts", "get-caller-identity"), config, config["role_arn"])
+    verify_identity(
+        request("sts", "get-caller-identity"), config, config["role_arn"]
+    )
     return [
         {"check": "host_assume_investigator", "passed": True},
         *verify_reads(request, config),
@@ -288,7 +294,9 @@ def main() -> None:
             request = partial(aws_request, config, profile=args.profile)
             identity = request("sts", "get-caller-identity")
 
-            require(identity["Account"] == config["account_id"], "Wrong account")
+            require(
+                identity["Account"] == config["account_id"], "Wrong account"
+            )
 
             results = verify_policy(request, config)
         else:
@@ -297,7 +305,9 @@ def main() -> None:
         write_json({"passed": False, "error": str(error)})
         raise SystemExit(1) from None
 
-    write_json({"mode": args.mode, "passed": True, "checks": results}, indent=2)
+    write_json(
+        {"mode": args.mode, "passed": True, "checks": results}, indent=2
+    )
 
 
 if __name__ == "__main__":

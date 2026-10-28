@@ -1,7 +1,6 @@
-import sys
 import json
 import logging
-
+import sys
 from collections.abc import Mapping
 from datetime import datetime, timezone
 

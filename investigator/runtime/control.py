@@ -1,14 +1,13 @@
+import argparse
+import json
+import logging
 import os
 import re
+import shutil
+import sqlite3
+import subprocess
 import sys
 import time
-import json
-import shutil
-import logging
-import sqlite3
-import argparse
-import subprocess
-
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -174,7 +173,9 @@ def restore_files(source: str | Path) -> None:
         result = subprocess.run(["systemctl", "is-active", "--quiet", service])
 
         if result.returncode == 0:
-            raise SystemExit("Runtime services must be stopped before restoring files")
+            raise SystemExit(
+                "Runtime services must be stopped before restoring files"
+            )
 
     source = Path(source).resolve()
 
@@ -187,7 +188,9 @@ def restore_files(source: str | Path) -> None:
 
     for folder in ("hermes", "findings"):
         if not (source / folder).is_dir():
-            raise SystemExit("Restore source must contain hermes/ and findings/")
+            raise SystemExit(
+                "Restore source must contain hermes/ and findings/"
+            )
 
     stage = ROOT / (".restore-" + str(time.time_ns()))
     stage.mkdir(mode=0o700)
@@ -213,15 +216,21 @@ def restore_files(source: str | Path) -> None:
                 validate_notifications(delivery_state)
 
                 if (
-                    delivery_state.execute("PRAGMA integrity_check").fetchone()[0]
+                    delivery_state.execute(
+                        "PRAGMA integrity_check"
+                    ).fetchone()[0]
                     != "ok"
                 ):
-                    raise SystemExit("Restored notification integrity check failed")
+                    raise SystemExit(
+                        "Restored notification integrity check failed"
+                    )
 
         saved = checkpoint()
 
         if (source / "observations.yaml").is_file():
-            shutil.copy2(source / "observations.yaml", ROOT / "observations.yaml")
+            shutil.copy2(
+                source / "observations.yaml", ROOT / "observations.yaml"
+            )
             os.chown(ROOT / "observations.yaml", 0, 0)
             (ROOT / "observations.yaml").chmod(0o644)
 
@@ -269,7 +278,9 @@ def change_image(action: str, image: str | None = None) -> None:
 
         selected_runtime = {**previous, "hermes_image": image}
     elif action == "rollback" and not (OPS / "rollback.json").exists():
-        raise SystemExit("No previous deployment has been recorded for rollback")
+        raise SystemExit(
+            "No previous deployment has been recorded for rollback"
+        )
 
     if action == "rollback":
         rollback = json.loads((OPS / "rollback.json").read_text())
@@ -341,8 +352,12 @@ def main() -> None:
             "chat",
         ],
     )
-    parser.add_argument("--image", help="Reviewed official Hermes digest for upgrade")
-    parser.add_argument("--source", help="Mounted backup's srv/hermes-lab directory")
+    parser.add_argument(
+        "--image", help="Reviewed official Hermes digest for upgrade"
+    )
+    parser.add_argument(
+        "--source", help="Mounted backup's srv/hermes-lab directory"
+    )
     parser.add_argument(
         "--observations",
         type=Path,
@@ -361,7 +376,9 @@ def main() -> None:
         "restart",
         "reset-collector",
     ):
-        parser.error("--observations requires start, restart, or reset-collector")
+        parser.error(
+            "--observations requires start, restart, or reset-collector"
+        )
     if args.since is not None and args.action != "reset-collector":
         parser.error("--since is supported only for reset-collector")
 

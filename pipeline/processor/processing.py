@@ -1,8 +1,7 @@
 import json
+import logging
 import math
 import time
-import logging
-
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable, NotRequired, TypedDict
 
@@ -72,9 +71,14 @@ def transform(body: bytes) -> list[dict[str, Any]]:
         ):
             raise InvalidInput(f"record[{index}].amount must be numeric")
         if isinstance(amount, float) and not math.isfinite(amount * 2):
-            raise InvalidInput(f"record[{index}].amount cannot be doubled finitely")
+            raise InvalidInput(
+                f"record[{index}].amount cannot be doubled finitely"
+            )
 
-    return [{**record, "amount_doubled": record["amount"] * 2} for record in records]
+    return [
+        {**record, "amount_doubled": record["amount"] * 2}
+        for record in records
+    ]
 
 
 def process_object(
@@ -151,11 +155,15 @@ def process_object(
             key=evidence["output_key"],
             **context,
         )
-        evidence.update(status="succeeded", stage="complete", record_count=len(output))
+        evidence.update(
+            status="succeeded", stage="complete", record_count=len(output)
+        )
     except Exception as error:
         evidence["error_type"] = type(error).__name__
         evidence["error"] = (
-            str(error) if isinstance(error, InvalidInput) else "AWS operation failed"
+            str(error)
+            if isinstance(error, InvalidInput)
+            else "AWS operation failed"
         )
 
         log_event(
@@ -213,7 +221,9 @@ def process_object(
     emit_event(
         LOGGER,
         evidence,
-        level=logging.ERROR if evidence["status"] == "failed" else logging.INFO,
+        level=logging.ERROR
+        if evidence["status"] == "failed"
+        else logging.INFO,
     )
 
     return evidence

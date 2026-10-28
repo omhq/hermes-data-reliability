@@ -1,8 +1,7 @@
+import argparse
 import json
 import logging
 import tempfile
-import argparse
-
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +66,9 @@ def write_definition(definition: dict[str, Any], destination: Path) -> None:
     payload = yaml.dump(definition, Dumper=Dumper, sort_keys=False)
 
     if len(payload.encode("utf-8")) > MAX_DEFINITION_BYTES:
-        raise DefinitionError("Installed observation definition exceeds 64 KiB")
+        raise DefinitionError(
+            "Installed observation definition exceeds 64 KiB"
+        )
 
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=destination.parent, delete=False

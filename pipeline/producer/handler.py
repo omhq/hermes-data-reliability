@@ -1,10 +1,9 @@
-import os
-import uuid
-import json
-import random
 import hashlib
+import json
 import logging
-
+import os
+import random
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Protocol, TypedDict
 
@@ -146,7 +145,9 @@ def produce(
     return result
 
 
-def handler(event: dict[str, Any], context: LambdaContext | None) -> dict[str, Any]:
+def handler(
+    event: dict[str, Any], context: LambdaContext | None
+) -> dict[str, Any]:
     configure_logging()
 
     client = boto3.client("s3")

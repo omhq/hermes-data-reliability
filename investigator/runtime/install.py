@@ -1,11 +1,10 @@
-import os
-import time
 import json
 import logging
+import os
 import shutil
 import sqlite3
 import subprocess
-
+import time
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -110,7 +109,9 @@ def prepare_networks() -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     ).returncode:
-        run("docker", "network", "create", "--internal", "hermes-lab-tools-net")
+        run(
+            "docker", "network", "create", "--internal", "hermes-lab-tools-net"
+        )
 
     if subprocess.run(
         ["docker", "network", "inspect", "hermes-lab-runtime-net"],
@@ -220,7 +221,9 @@ def activate_release(
     current = ROOT / "code"
 
     if current.exists() and not current.is_symlink():
-        current.rename(ROOT / ("code-before-operations-" + str(int(time.time()))))
+        current.rename(
+            ROOT / ("code-before-operations-" + str(int(time.time())))
+        )
 
     previous_release = str(current.resolve()) if current.is_symlink() else None
     staged = ROOT / ".code-next"
@@ -313,7 +316,9 @@ def activate() -> None:
     database = ROOT / "findings/incidents.sqlite3"
 
     if database.exists():
-        with closing(sqlite3.connect(f"file:{database}?mode=ro", uri=True)) as ledger:
+        with closing(
+            sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+        ) as ledger:
             validate_schema(ledger)
 
     notifications = ROOT / "findings" / DATABASE_NAME
@@ -374,7 +379,9 @@ def main() -> None:
 
     with investigation_lock() as acquired:
         if not acquired:
-            raise SessionUnavailable("Finish the active investigation before deploying")
+            raise SessionUnavailable(
+                "Finish the active investigation before deploying"
+            )
 
         try:
             activate()

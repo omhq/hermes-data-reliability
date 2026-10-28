@@ -1,7 +1,6 @@
-import re
 import json
+import re
 import sqlite3
-
 from typing import Any
 
 from .definition import SEVERITIES, fingerprint, validate_investigation
@@ -148,7 +147,9 @@ def record_matches(
         )
 
 
-def matches_for(db: sqlite3.Connection, incident_id: str) -> list[dict[str, Any]]:
+def matches_for(
+    db: sqlite3.Connection, incident_id: str
+) -> list[dict[str, Any]]:
     return [
         {**dict(row), "spans": json.loads(row["spans"])}
         for row in db.execute(

@@ -1,11 +1,10 @@
+import argparse
+import json
+import logging
 import os
 import re
-import time
-import json
-import argparse
-import logging
 import sqlite3
-
+import time
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -50,14 +49,18 @@ class NotificationConfig:
                 rf"arn:aws:sns:{region}:{account}:[A-Za-z0-9_-]+", topic
             )
             or type(role) is not str
-            or not re.fullmatch(rf"arn:aws:iam::{account}:role/[A-Za-z0-9_-]+", role)
+            or not re.fullmatch(
+                rf"arn:aws:iam::{account}:role/[A-Za-z0-9_-]+", role
+            )
         ):
             raise ValueError("Invalid trusted notification configuration")
 
         return cls(account, region, topic, role)
 
 
-def report_message(incident: sqlite3.Row, config: NotificationConfig) -> store.Message:
+def report_message(
+    incident: sqlite3.Row, config: NotificationConfig
+) -> store.Message:
     """Use saved agent prose and host metadata, excluding evidence bodies."""
     finding = json.loads(incident["finding"])
 
@@ -104,7 +107,9 @@ def report_message(incident: sqlite3.Row, config: NotificationConfig) -> store.M
     }
 
 
-def snapshot(database: Path, config: NotificationConfig) -> list[store.Message]:
+def snapshot(
+    database: Path, config: NotificationConfig
+) -> list[store.Message]:
     with closing(sqlite3.connect(f"file:{database}?mode=ro", uri=True)) as db:
         db.row_factory = sqlite3.Row
 
@@ -165,9 +170,11 @@ class Publisher:
             f"{self.config.role_arn.rsplit('/', 1)[-1]}/"
         )
 
-        if identity.get("Account") != self.config.account_id or not identity.get(
-            "Arn", ""
-        ).startswith(expected):
+        if identity.get(
+            "Account"
+        ) != self.config.account_id or not identity.get("Arn", "").startswith(
+            expected
+        ):
             raise ExecutionError("unexpected_aws_identity")
 
         result = self.call(
@@ -211,14 +218,22 @@ def deliver_one(
     except Exception as error:
         # Provider errors and agent text must not enter diagnostics.
         safe_error = (
-            error.code if isinstance(error, ExecutionError) else type(error).__name__
+            error.code
+            if isinstance(error, ExecutionError)
+            else type(error).__name__
         )
 
-        store.finish(db, config.topic_arn, item["incident_id"], error=safe_error)
+        store.finish(
+            db, config.topic_arn, item["incident_id"], error=safe_error
+        )
         LOGGER.warning("Agent report delivery failed. code=%s", safe_error)
     else:
-        store.finish(db, config.topic_arn, item["incident_id"], message_id=message_id)
-        LOGGER.info("Agent report accepted by SNS. incident_id=%s", item["incident_id"])
+        store.finish(
+            db, config.topic_arn, item["incident_id"], message_id=message_id
+        )
+        LOGGER.info(
+            "Agent report accepted by SNS. incident_id=%s", item["incident_id"]
+        )
 
 
 def main() -> None:
@@ -228,7 +243,9 @@ def main() -> None:
 
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--initialize-only", action="store_true")
-    parser.add_argument("--send-incident", help="Queue one historical report once")
+    parser.add_argument(
+        "--send-incident", help="Queue one historical report once"
+    )
 
     args = parser.parse_args()
 

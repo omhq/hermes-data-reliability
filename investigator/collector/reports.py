@@ -1,6 +1,5 @@
 import json
 import sqlite3
-
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +21,9 @@ def evidence_lines(finding: dict[str, Any]) -> str:
 
     if finding.get("evidence_warnings"):
         lines.append("\nEvidence limitations:")
-        lines.extend("- " + warning["code"] for warning in finding["evidence_warnings"])
+        lines.extend(
+            "- " + warning["code"] for warning in finding["evidence_warnings"]
+        )
 
     return "\n".join(lines)
 
@@ -30,7 +31,9 @@ def evidence_lines(finding: dict[str, Any]) -> str:
 def export(db: sqlite3.Connection, root: Path) -> None:
     rows = [
         dict(row)
-        for row in db.execute("SELECT * FROM incidents ORDER BY detected_at,id")
+        for row in db.execute(
+            "SELECT * FROM incidents ORDER BY detected_at,id"
+        )
     ]
 
     for row in rows:
@@ -59,7 +62,8 @@ def export(db: sqlite3.Connection, root: Path) -> None:
             report += (
                 "Matched rules: "
                 + ", ".join(
-                    "`" + matched["rule_id"] + "`" for matched in row["matches"]
+                    "`" + matched["rule_id"] + "`"
+                    for matched in row["matches"]
                 )
                 + "\n\n"
             )

@@ -1,4 +1,12 @@
-from hermes_cloud_tools.schemas import MAX_BYTES
+MAX_BYTES = {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 262144,
+    "description": (
+        "Maximum serialized evidence bytes; default 65536. "
+        "Shared investigation budgets also apply."
+    ),
+}
 
 DESCRIBE_CLOUDTRAIL_SCOPE = {
     "name": "describe_cloudtrail_scope",

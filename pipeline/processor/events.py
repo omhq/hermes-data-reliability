@@ -1,6 +1,5 @@
-import re
 import json
-
+import re
 from typing import TypedDict
 from urllib.parse import unquote_plus
 
@@ -57,7 +56,9 @@ def input_references(body: object, bucket: str) -> list[InputReference]:
             ):
                 raise InvalidNotification("Unapproved S3 input notification")
 
-            references.append({"run_id": match[1], "input_key": key, "etag": etag})
+            references.append(
+                {"run_id": match[1], "input_key": key, "etag": etag}
+            )
 
         return references
     except (

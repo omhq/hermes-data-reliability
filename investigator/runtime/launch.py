@@ -4,7 +4,6 @@ import signal
 import subprocess
 import tempfile
 import time
-
 from collections.abc import Generator
 from contextlib import contextmanager
 from types import FrameType
@@ -122,7 +121,9 @@ def finish_worker(
             process.wait()
 
 
-def run_once(session: InvestigationSession, prompt: str, seconds: float = 240) -> str:
+def run_once(
+    session: InvestigationSession, prompt: str, seconds: float = 240
+) -> str:
     """Keep the same session until the model and citation checks finish."""
     payload = prompt.encode("utf-8")
 
@@ -183,7 +184,9 @@ def collect_output(
                     ended = True
                 else:
                     if len(output) + len(chunk) > MAX_OUTPUT_BYTES:
-                        raise RuntimeError("Investigation output limit exceeded")
+                        raise RuntimeError(
+                            "Investigation output limit exceeded"
+                        )
 
                     output.extend(chunk)
 

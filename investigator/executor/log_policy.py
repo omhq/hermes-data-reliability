@@ -1,5 +1,4 @@
 import re
-
 from typing import TYPE_CHECKING, Any, Callable
 
 from .models import IncidentContext, PolicyLimits, ResourceContext
@@ -48,7 +47,8 @@ class LogPolicy(ResourcePolicy):
         request = fields(request, {"tool", "arguments"}, set())
         require(
             type(request["tool"]) is str
-            and request["tool"] in {"search_log_events", "lookup_cloudtrail_events"},
+            and request["tool"]
+            in {"search_log_events", "lookup_cloudtrail_events"},
             "unknown_tool",
         )
 
@@ -79,7 +79,9 @@ class LogPolicy(ResourcePolicy):
 def log_context(
     config: dict[str, Any], request: object, now: int
 ) -> tuple[ResourceContext, int]:
-    request = fields(request, {"observation_id", "incident_time_ms"}, {"ttl_seconds"})
+    request = fields(
+        request, {"observation_id", "incident_time_ms"}, {"ttl_seconds"}
+    )
     incident_id = request["observation_id"]
 
     require(
@@ -88,7 +90,9 @@ def log_context(
         "invalid_context",
     )
 
-    timestamp = integer(request["incident_time_ms"], 1, 2**63 - 1, "invalid_timestamp")
+    timestamp = integer(
+        request["incident_time_ms"], 1, 2**63 - 1, "invalid_timestamp"
+    )
     ttl = integer(request.get("ttl_seconds", 300), 1, 300, "invalid_ttl")
     context = ResourceContext(
         profile="collector_logs",

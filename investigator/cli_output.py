@@ -1,5 +1,5 @@
-import sys
 import json
+import sys
 
 
 def write_json(value: object, *, indent: int | None = None) -> None:

@@ -54,7 +54,9 @@ class ToolPackages:
     cloudtrail_resources: tuple[str, ...]
 
     @classmethod
-    def parse(cls, enabled: object, disabled: object, resources: object) -> Self:
+    def parse(
+        cls, enabled: object, disabled: object, resources: object
+    ) -> Self:
         approved = set(PACKAGE_TOOLSETS)
         active = names(enabled, approved)
         denied = names(disabled, approved)
@@ -101,7 +103,9 @@ class ToolPackages:
 
     @property
     def tools(self) -> frozenset[str]:
-        return frozenset().union(*(PACKAGE_TOOLS[name] for name in self.enabled))
+        return frozenset().union(
+            *(PACKAGE_TOOLS[name] for name in self.enabled)
+        )
 
     @property
     def toolsets(self) -> tuple[str, ...]:

@@ -1,6 +1,6 @@
+import logging
 import sys
 import time
-import logging
 
 
 def configure_logging(level: int = logging.INFO) -> None:
