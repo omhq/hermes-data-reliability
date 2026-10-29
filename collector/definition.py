@@ -6,7 +6,7 @@ from typing import Any, Hashable
 
 import yaml
 
-from investigator.incidents.specification import (
+from incidents.specification import (
     DefinitionError,
     fields,
     validate_investigation,
@@ -16,9 +16,6 @@ MAX_DEFINITION_BYTES = 65536
 MAX_RULES = 64
 MAX_CONDITIONS = 128
 SEVERITIES = {"warning": 1, "error": 2, "critical": 3}
-DEFAULT_OBSERVATIONS = (
-    Path(__file__).resolve().parents[1] / "runtime/observations.yaml"
-)
 
 
 class Loader(yaml.SafeLoader):

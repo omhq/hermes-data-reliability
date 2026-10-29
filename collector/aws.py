@@ -1,6 +1,6 @@
 from typing import Any
 
-from investigator.aws_cli import (
+from host_aws.cli import (
     AwsCallError,
     CliRunner,
     Deadline,

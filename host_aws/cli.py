@@ -5,7 +5,7 @@ import subprocess
 import time
 from typing import Any, Protocol
 
-from investigator.json_input import decode
+from ._json import decode
 
 
 class AwsCallError(RuntimeError):

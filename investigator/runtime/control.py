@@ -12,8 +12,8 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from incidents.queue import budget_status
 from investigator.cli_output import write_json
-from investigator.incidents.queue import budget_status
 from investigator.logging_config import configure_logging
 
 from .containers import verify_image_python
@@ -62,11 +62,13 @@ def configure_collector(observations: Path | None = None) -> None:
     arguments = [
         str(ROOT / "collector-venv-py314/bin/python"),
         "-m",
-        "investigator.collector.configure",
+        "collector.configure",
         "--approved",
         "/etc/hermes-lab/executor.json",
         "--destination",
         str(ROOT / "observations.yaml"),
+        "--template",
+        str(ROOT / "code/investigator/runtime/observations.yaml"),
     ]
 
     if observations is not None:

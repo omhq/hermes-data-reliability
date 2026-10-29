@@ -1,7 +1,7 @@
 import sqlite3
 from typing import TYPE_CHECKING, Any, Callable
 
-from investigator.aws_cli import AwsCallError
+from host_aws.cli import AwsCallError
 
 from .cloudwatch import MAX_PAGES, MAX_WINDOW_MS
 from .definition import duration
@@ -9,7 +9,7 @@ from .matching import Matcher, MatchError
 from .observation_store import record_matches, source_key
 
 if TYPE_CHECKING:
-    from investigator.collector.cloudwatch import CloudWatchReader
+    from collector.cloudwatch import CloudWatchReader
 
 
 def collect_source(

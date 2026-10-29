@@ -9,7 +9,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-from investigator.incidents.database import UnsupportedLedger, validate_schema
+from incidents.database import UnsupportedLedger, validate_schema
 from investigator.logging_config import configure_logging
 
 from .containers import validate_image, verify_image_python
@@ -303,17 +303,19 @@ def prepare_collector() -> None:
         "pip",
         "install",
         "--requirement",
-        str(RELEASE / "investigator/collector/requirements.txt"),
+        str(RELEASE / "collector/requirements.txt"),
     )
 
     run(
         str(environment / "bin/python"),
         "-m",
-        "investigator.collector.configure",
+        "collector.configure",
         "--approved",
         str(ROOT / "investigator.json"),
         "--destination",
         str(ROOT / "observations.yaml"),
+        "--template",
+        str(RELEASE / "investigator/runtime/observations.yaml"),
         cwd=RELEASE,
     )
 

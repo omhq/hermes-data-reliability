@@ -7,11 +7,9 @@ from typing import Any
 
 import yaml
 
-from investigator.logging_config import configure_logging
-
 from .access import CollectionAccess
+from .cli import configure_logging
 from .definition import (
-    DEFAULT_OBSERVATIONS,
     MAX_DEFINITION_BYTES,
     DefinitionError,
     load,
@@ -29,14 +27,21 @@ class Dumper(yaml.SafeDumper):
 def configure(
     approved: dict[str, Any],
     destination: Path,
-    template: Path,
+    template: Path | None = None,
     source: Path | None = None,
 ) -> dict[str, Any]:
     """Validate the operator definition before installing it."""
     CollectionAccess.load(approved)
 
     existing = destination.exists()
-    definition = load(source or (destination if existing else template))
+    selected = source or (destination if existing else template)
+
+    if selected is None:
+        raise DefinitionError(
+            "Initial configuration needs a template or source"
+        )
+
+    definition = load(selected)
 
     if not existing and source is None:
         for source_definition in definition["sources"].values():
@@ -99,7 +104,7 @@ def main() -> None:
     parser.add_argument(
         "--template",
         type=Path,
-        default=DEFAULT_OBSERVATIONS,
+        help="Initial observation template supplied by the host application",
     )
 
     args = parser.parse_args()

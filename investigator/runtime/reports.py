@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from .records import matches_for
+from incidents.records import matches_for
 
 
 def evidence_lines(finding: dict[str, Any]) -> str:

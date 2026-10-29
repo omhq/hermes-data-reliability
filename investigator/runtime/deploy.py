@@ -51,7 +51,15 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
     archive = io.BytesIO()
     paths = []
 
-    for folder in ("investigator", "tool_boundary", "pipeline", "evals"):
+    for folder in (
+        "collector",
+        "incidents",
+        "host_aws",
+        "investigator",
+        "tool_boundary",
+        "pipeline",
+        "evals",
+    ):
         paths.extend((root / folder).rglob("*"))
 
     with tarfile.open(fileobj=archive, mode="w") as bundle:

@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from investigator.incidents.specification import validate_investigation
+from incidents.specification import validate_investigation
 from investigator.runtime.findings import parse_result
 from investigator.runtime.launch import run_once, stop_on_disconnect
 from investigator.runtime.sessions import (

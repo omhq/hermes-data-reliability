@@ -1,8 +1,7 @@
 import argparse
 from pathlib import Path
 
-from investigator.cli_output import write_json
-
+from .cli import write_json
 from .definition import load
 from .matching import MAX_BLOCK_BYTES, Matcher
 

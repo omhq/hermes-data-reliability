@@ -8,12 +8,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from investigator.incidents.database import connect
-from investigator.logging_config import configure_logging
+from incidents.database import connect
 
 from .access import CollectionAccess
 from .audit import CollectionAudit
 from .aws import CloudWatchClient
+from .cli import configure_logging
 from .cloudwatch import CloudWatchReader
 from .collection import collect_source
 from .definition import investigation_settings, load

@@ -11,14 +11,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from investigator.aws_cli import (
+from host_aws.cli import (
     AwsCallError,
     CliRunner,
     Deadline,
     host_environment,
     run_json,
 )
-from investigator.incidents.database import validate_schema
+from incidents.database import validate_schema
 from investigator.logging_config import configure_logging
 from investigator.runtime.findings import TEXT_FIELDS
 

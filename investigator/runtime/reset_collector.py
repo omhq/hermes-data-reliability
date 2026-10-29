@@ -13,13 +13,13 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
-from investigator.collector.configure import configure
-from investigator.collector.definition import duration
-from investigator.collector.matching import MatchError
-from investigator.collector.observation_store import source_key
-from investigator.incidents.database import connect, validate_schema
-from investigator.incidents.reports import export
+from collector.configure import configure
+from collector.definition import duration
+from collector.matching import MatchError
+from collector.observation_store import source_key
+from incidents.database import connect, validate_schema
 from investigator.logging_config import configure_logging
+from investigator.runtime.reports import export
 
 from . import control
 from .locking import investigation_lock
