@@ -121,8 +121,8 @@ source is staged only. Activation:
 - Requires incident schema 2; incompatible formats stop activation before
   services stop, without migration or reset.
 
-The release includes `collector`, `incidents`, `host_aws`, `investigator`, and
-`tool_boundary`. Investigation uses host Python 3.14 and the standard library.
+The release includes `collector`, `incidents`, `investigator`, and `tool_boundary`.
+Investigation uses host Python 3.14 and the standard library.
 Collection runs `python -m collector.poll` in
 `/srv/hermes-lab/collector-venv-py314`, with pinned PyYAML and bounded pattern checks.
 Its independent allowlist is `/etc/hermes-lab/executor.json`.

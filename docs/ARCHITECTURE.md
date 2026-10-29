@@ -83,9 +83,8 @@ internal gateway stays stopped. Evaluation tools run only when requested.
 
 | Package | Owns | Dependencies |
 | --- | --- | --- |
-| `collector/` | CloudWatch reads, matching, progress, collection audit/status | `incidents`, `host_aws`, pinned PyYAML |
+| `collector/` | CloudWatch reads, matching, progress, collection audit/status | `incidents`, pinned PyYAML |
 | `incidents/` | SQLite records, instruction payload contract, claims, attempts | Standard library only |
-| `host_aws/` | Bounded AWS subprocesses for collection/notifications | Standard library only; host AWS CLI |
 | `tool_boundary/` | Agent authorization, budgets, execution, audit, receipts | Standard library only; host AWS CLI |
 | `investigator/` | Agent prompts, orchestration, chat, reports, deployment | Host packages and configured Hermes runtime |
 
@@ -95,9 +94,10 @@ supplies its initial YAML template explicitly; the lab template is
 `investigator/runtime/observations.yaml`. Installation uses `collector.configure`;
 the service runs `python -m collector.poll`.
 
-Collection and notifications use `host_aws/cli.py`, with their own identity,
-scope, response, and audit checks. They need no agent grant. Only investigation
-orchestration opens grants for agent work.
+Collection and notifications each own their AWS client, with time/output
+limits and safe errors. Collection keeps its identity, scope, response, and
+audit checks. These operations need no agent grant; investigation orchestration
+opens grants for agent work.
 
 ### Claims and durability
 

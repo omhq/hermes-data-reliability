@@ -20,7 +20,6 @@ venv = ".venv"
 include = [
     "collector",
     "incidents",
-    "host_aws",
     "investigator",
     "tool_boundary",
     "pipeline",

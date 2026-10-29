@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from host_aws.cli import AwsCallError
+from .aws import AwsCallError
 
 
 @dataclass(frozen=True)

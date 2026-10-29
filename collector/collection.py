@@ -1,8 +1,7 @@
 import sqlite3
 from typing import TYPE_CHECKING, Any, Callable
 
-from host_aws.cli import AwsCallError
-
+from .aws import AwsCallError
 from .cloudwatch import MAX_PAGES, MAX_WINDOW_MS
 from .definition import duration
 from .matching import Matcher, MatchError

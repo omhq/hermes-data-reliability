@@ -54,7 +54,6 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
     for folder in (
         "collector",
         "incidents",
-        "host_aws",
         "investigator",
         "tool_boundary",
         "pipeline",

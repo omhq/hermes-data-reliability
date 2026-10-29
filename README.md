@@ -50,7 +50,7 @@ With the virtual environment active, run the checks from the repository root:
 python -m ruff format --check .
 python -m ruff check .
 python -m compileall -q \
-  collector incidents host_aws tool_boundary investigator pipeline evals tests
+  collector incidents tool_boundary investigator pipeline evals tests
 git diff --check
 ```
 

@@ -2,64 +2,22 @@ import argparse
 import json
 import logging
 import os
-import re
 import sqlite3
 import time
 from contextlib import closing
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
-from host_aws.cli import (
-    AwsCallError,
-    CliRunner,
-    Deadline,
-    host_environment,
-    run_json,
-)
 from incidents.database import validate_schema
 from investigator.logging_config import configure_logging
 from investigator.runtime.findings import TEXT_FIELDS
 
 from . import notification_store as store
 from .locking import investigation_lock
+from .notification_aws import AwsCallError, NotificationConfig, Publisher
 
 LOGGER = logging.getLogger(__name__)
 ROOT = Path("/srv/hermes-lab")
-
-
-@dataclass(frozen=True)
-class NotificationConfig:
-    account_id: str
-    region: str
-    topic_arn: str
-    role_arn: str
-
-    @classmethod
-    def load(cls, operations: dict[str, Any]) -> NotificationConfig:
-        account = operations.get("account_id")
-        region = operations.get("region")
-        topic = operations.get("alert_topic_arn")
-        role = operations.get("notification_role_arn")
-
-        if (
-            type(account) is not str
-            or not re.fullmatch(r"[0-9]{12}", account)
-            or type(region) is not str
-            or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-[0-9]+", region)
-            or type(topic) is not str
-            or not re.fullmatch(
-                rf"arn:aws:sns:{region}:{account}:[A-Za-z0-9_-]+", topic
-            )
-            or type(role) is not str
-            or not re.fullmatch(
-                rf"arn:aws:iam::{account}:role/[A-Za-z0-9_-]+", role
-            )
-        ):
-            raise ValueError("Invalid trusted notification configuration")
-
-        return cls(account, region, topic, role)
 
 
 def report_message(
@@ -130,76 +88,6 @@ def snapshot(
         )
 
         return [report_message(row, config) for row in rows]
-
-
-class Publisher:
-    def __init__(
-        self, config: NotificationConfig, runner: CliRunner = run_json
-    ) -> None:
-        self.config = config
-        self.runner = runner
-
-    def call(
-        self,
-        service: str,
-        operation: str,
-        arguments: list[str],
-        deadline: Deadline,
-    ) -> dict[str, Any]:
-        return self.runner(
-            [
-                "/usr/bin/aws",
-                service,
-                operation,
-                "--region",
-                self.config.region,
-                "--output",
-                "json",
-                "--no-cli-pager",
-                "--cli-connect-timeout",
-                "5",
-                "--cli-read-timeout",
-                "15",
-                *arguments,
-            ],
-            host_environment(self.config.region),
-            deadline,
-        )
-
-    def publish(self, subject: str, message: str) -> str:
-        deadline = Deadline(40)
-        identity = self.call("sts", "get-caller-identity", [], deadline)
-        expected = (
-            f"arn:aws:sts::{self.config.account_id}:assumed-role/"
-            f"{self.config.role_arn.rsplit('/', 1)[-1]}/"
-        )
-
-        if identity.get(
-            "Account"
-        ) != self.config.account_id or not identity.get("Arn", "").startswith(
-            expected
-        ):
-            raise AwsCallError("unexpected_aws_identity")
-
-        result = self.call(
-            "sns",
-            "publish",
-            [
-                "--topic-arn",
-                self.config.topic_arn,
-                "--subject",
-                subject,
-                "--message",
-                message,
-            ],
-            deadline,
-        )
-        message_id = result.get("MessageId")
-
-        if type(message_id) is not str or not message_id:
-            raise AwsCallError("invalid_publish_response")
-
-        return message_id
 
 
 def deliver_one(

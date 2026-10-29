@@ -1,7 +1,7 @@
 import json
 from typing import TYPE_CHECKING, Any
 
-from host_aws.cli import AwsCallError, Deadline
+from .aws import AwsCallError, Deadline
 
 if TYPE_CHECKING:
     from .audit import CollectionAudit
