@@ -1,10 +1,11 @@
 [Unit]
-Description=Schedule configured CloudWatch collection and pending investigations
+Description=Schedule configured CloudWatch collection
 PartOf=hermes-lab.target
 
 [Timer]
 OnBootSec=15
 OnUnitInactiveSec=15
+AccuracySec=1
 Unit=hermes-lab-poller.service
 
 [Install]

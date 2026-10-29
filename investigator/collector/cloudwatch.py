@@ -1,13 +1,11 @@
-import time
+import json
 from typing import TYPE_CHECKING, Any
 
-from investigator.executor.models import ApprovedAction
-from investigator.executor.process import Deadline
-from investigator.executor.wire import ExecutionError, encode
+from investigator.aws_cli import AwsCallError, Deadline
 
 if TYPE_CHECKING:
-    from investigator.executor.audit import AuditLog
-    from investigator.executor.aws import AwsBackend
+    from .audit import CollectionAudit
+    from .aws import CloudWatchClient
 
 
 MAX_PAGES = 5
@@ -16,16 +14,13 @@ PAGE_EVENTS = 100
 
 
 class CloudWatchReader:
-    def __init__(self, backend: AwsBackend, audit: AuditLog) -> None:
-        self.backend = backend
-        self.account_id = backend.config["account_id"]
+    def __init__(
+        self, client: CloudWatchClient, audit: CollectionAudit
+    ) -> None:
+        self.client = client
+        self.account_id = client.access.account_id
         self.audit = audit
-        self.environment = None
-
-        now = int(time.time() * 1000)
-        self.deadline = Deadline(
-            60, now + 60000, lambda: int(time.time() * 1000)
-        )
+        self.deadline = Deadline(60)
 
     def read(
         self,
@@ -34,44 +29,20 @@ class CloudWatchReader:
         end: int,
         token: str | None = None,
     ) -> tuple[list[dict[str, Any]], str | None]:
-        approved = self.backend.config
+        approved = self.client.access
 
         if any(
-            source[key] != approved[key] for key in ("region", "log_group")
+            source[key] != getattr(approved, key)
+            for key in ("region", "log_group")
         ):
-            raise ExecutionError("resource_not_allowed")
-
-        parameters = {
-            "logGroupName": source["log_group"],
-            "startTime": start,
-            "endTime": end,
-            "filterPattern": "",
-            "limit": PAGE_EVENTS,
-            "unmask": False,
-        }
-
-        if token is not None:
-            parameters["nextToken"] = token
-
-        action = ApprovedAction(
-            tool="collect_log_events",
-            run_id="",
-            account_id=approved["account_id"],
-            region=approved["region"],
-            service="logs",
-            operation="FilterLogEvents",
-            parameters=parameters,
-            max_bytes=2 * 1024 * 1024,
-            timeout_seconds=30,
-            expires_at_ms=self.deadline.expires_at_ms,
-        )
+            raise AwsCallError("resource_not_allowed")
 
         self.audit.write(
             {
                 "status": "collection_read",
                 "source": {
-                    "account_id": approved["account_id"],
-                    "region": approved["region"],
+                    "account_id": approved.account_id,
+                    "region": approved.region,
                     "log_group": source["log_group"],
                     "start_ms": start,
                     "end_ms": end,
@@ -80,11 +51,8 @@ class CloudWatchReader:
         )
 
         try:
-            if self.environment is None:
-                self.environment = self.backend.assume(self.deadline)
-
-            response, _ = self.backend.execute(
-                action, self.environment, self.deadline
+            response = self.client.filter_log_events(
+                start, end, PAGE_EVENTS, token, self.deadline
             )
             events, continuation = validate_page(response, start, end)
         except Exception:
@@ -106,12 +74,15 @@ def validate_page(
     response: dict[str, Any], start: int, end: int
 ) -> tuple[list[dict[str, Any]], str | None]:
     if type(response) is not dict or type(response.get("events")) is not list:
-        raise ExecutionError("invalid_aws_response")
+        raise AwsCallError("invalid_aws_response")
 
     events = response["events"]
+    serialized = json.dumps(
+        response, separators=(",", ":"), allow_nan=False
+    ).encode("ascii")
 
-    if len(events) > PAGE_EVENTS or len(encode(response)) > 2 * 1024 * 1024:
-        raise ExecutionError("upstream_response_too_large")
+    if len(events) > PAGE_EVENTS or len(serialized) > 2 * 1024 * 1024:
+        raise AwsCallError("upstream_response_too_large")
 
     for event in events:
         if (
@@ -123,13 +94,13 @@ def validate_page(
             or type(event.get("message")) is not str
             or type(event.get("logStreamName")) is not str
         ):
-            raise ExecutionError("invalid_aws_response")
+            raise AwsCallError("invalid_aws_response")
 
     token = response.get("nextToken")
 
     if token is not None and (
         type(token) is not str or not 1 <= len(token) <= 4096
     ):
-        raise ExecutionError("invalid_aws_response")
+        raise AwsCallError("invalid_aws_response")
 
     return events, token

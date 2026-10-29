@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from .observation_store import matches_for
+from .records import matches_for
 
 
 def evidence_lines(finding: dict[str, Any]) -> str:
@@ -29,17 +29,23 @@ def evidence_lines(finding: dict[str, Any]) -> str:
 
 
 def export(db: sqlite3.Connection, root: Path) -> None:
-    rows = [
-        dict(row)
-        for row in db.execute(
-            "SELECT * FROM incidents ORDER BY detected_at,id"
-        )
-    ]
+    """Rebuild derived files while the caller holds the worker lock."""
+    with db:
+        db.execute("BEGIN")
+        rows = [
+            dict(row)
+            for row in db.execute(
+                "SELECT * FROM incidents ORDER BY detected_at,id"
+            )
+        ]
 
-    for row in rows:
-        row["evidence"] = json.loads(row["evidence"])
-        row["finding"] = json.loads(row["finding"]) if row["finding"] else None
-        row["matches"] = matches_for(db, row["id"])
+        for row in rows:
+            row.pop("claim_token")
+            row["evidence"] = json.loads(row["evidence"])
+            row["finding"] = (
+                json.loads(row["finding"]) if row["finding"] else None
+            )
+            row["matches"] = matches_for(db, row["id"])
 
     temporary = root / "incidents.jsonl.tmp"
 

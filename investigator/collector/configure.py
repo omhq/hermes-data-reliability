@@ -7,9 +7,9 @@ from typing import Any
 
 import yaml
 
-from investigator.executor.aws import validate_config
 from investigator.logging_config import configure_logging
 
+from .access import CollectionAccess
 from .definition import (
     DEFAULT_OBSERVATIONS,
     MAX_DEFINITION_BYTES,
@@ -33,7 +33,7 @@ def configure(
     source: Path | None = None,
 ) -> dict[str, Any]:
     """Validate the operator definition before installing it."""
-    validate_config(approved)
+    CollectionAccess.load(approved)
 
     existing = destination.exists()
     definition = load(source or (destination if existing else template))

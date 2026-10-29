@@ -11,13 +11,22 @@ from .wire import ExecutionError, decode
 
 class Deadline:
     def __init__(
-        self, seconds: float, expires_at_ms: int, clock: Callable[[], int]
+        self,
+        seconds: float,
+        expires_at_ms: int,
+        clock: Callable[[], int],
+        *,
+        cancelled: Callable[[], bool] | None = None,
     ) -> None:
         self.end = time.monotonic() + seconds
         self.expires_at_ms = expires_at_ms
         self.clock = clock
+        self.cancelled = cancelled
 
     def remaining(self) -> float:
+        if self.cancelled is not None and self.cancelled():
+            raise ExecutionError("context_revoked")
+
         remaining = min(
             self.end - time.monotonic(),
             (self.expires_at_ms - self.clock()) / 1000,

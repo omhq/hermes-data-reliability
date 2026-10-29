@@ -14,7 +14,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
-    from investigator.executor.models import ResolvedRead
+    from .models import ResolvedRead
 
 
 TOOLS = frozenset(

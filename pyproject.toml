@@ -17,4 +17,4 @@ pythonVersion = "3.14"
 pythonPlatform = "Linux"
 venvPath = "."
 venv = ".venv"
-include = ["investigator", "pipeline", "evals", "tests"]
+include = ["investigator", "tool_boundary", "pipeline", "evals", "tests"]

@@ -6,11 +6,10 @@ import socket
 import socketserver
 import struct
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any, cast
-
-from investigator.logging_config import configure_logging
 
 from .audit import AuditLog
 from .aws import AwsBackend
@@ -80,6 +79,7 @@ class Handler(socketserver.BaseRequestHandler):
                 response["error"] = "audit_unavailable"
 
         try:
+            self.request.settimeout(5)
             self.request.sendall(encode(response) + b"\n")
         except OSError:
             pass
@@ -153,7 +153,14 @@ class Server(socketserver.UnixStreamServer):
 
 
 def main() -> None:
-    configure_logging()
+    formatter = logging.Formatter(
+        "%(asctime)sZ %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+    )
+    formatter.converter = time.gmtime
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
 
     parser = argparse.ArgumentParser()
 

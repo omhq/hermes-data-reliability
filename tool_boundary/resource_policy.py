@@ -12,7 +12,7 @@ from .policy import (
 )
 
 if TYPE_CHECKING:
-    from investigator.executor.models import ApprovedAction, ResolvedRead
+    from .models import ApprovedAction, ResolvedRead
 
 
 RESOURCE_TOOLS = frozenset(

@@ -113,6 +113,26 @@ def healthy() -> dict[str, Any]:
         except OSError, ValueError, KeyError:
             issues.append("poller_heartbeat_missing")
 
+        if subprocess.run(
+            [
+                "systemctl",
+                "is-active",
+                "--quiet",
+                "hermes-lab-investigation.timer",
+            ]
+        ).returncode:
+            issues.append("investigation_timer_stopped")
+
+        try:
+            worker = json.loads(
+                (ROOT / "findings/last-investigation.json").read_text()
+            )
+
+            if time.time() - worker["completed_at"] > 600:
+                issues.append("investigation_worker_stale")
+        except OSError, ValueError, KeyError:
+            issues.append("investigation_heartbeat_missing")
+
         dbfile = ROOT / "findings/incidents.sqlite3"
 
         if dbfile.exists():

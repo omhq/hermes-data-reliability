@@ -19,8 +19,8 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
         root / "investigator/runtime/image.txt",
         root / "investigator/runtime/verify_hermes_plugin.py",
         root / "investigator/runtime/verify_plugin_image.py",
-        root / "investigator/executor/__init__.py",
-        root / "investigator/executor/wire.py",
+        root / "tool_boundary/__init__.py",
+        root / "tool_boundary/wire.py",
     ]
 
     for package in ("hermes_lab_aws", "aws_cloudwatch", "aws_cloudtrail"):

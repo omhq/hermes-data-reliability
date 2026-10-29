@@ -1,7 +1,7 @@
 import json
 from typing import Any, Iterator, Protocol
 
-from investigator.tool_packages import ToolPackages
+from tool_boundary.catalog import ToolPackages
 
 
 class AwsRequest(Protocol):

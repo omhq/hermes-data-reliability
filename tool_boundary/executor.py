@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import re
 import secrets
@@ -8,8 +9,7 @@ from _thread import LockType
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
-from investigator.tool_packages import ALL_TOOLS, ToolPackages
-
+from .catalog import ALL_TOOLS, ToolPackages
 from .log_policy import LogPolicy, log_context
 from .models import IncidentContext, PolicyDenied, ResourceContext
 from .policy import RequestPolicy, fields, integer, require, wall_time_ms
@@ -20,8 +20,7 @@ from .results import bounded_result
 from .wire import ExecutionError, encode
 
 if TYPE_CHECKING:
-    from investigator.executor.audit import AuditLog
-    from investigator.executor.aws import AwsBackend
+    from .contracts import AuditSink, ReadBackend
 
 
 @dataclass
@@ -38,6 +37,9 @@ class Session:
     )
     failures: list[dict[str, Any]] = field(default_factory=list, repr=False)
     lock: LockType = field(default_factory=threading.Lock, repr=False)
+    revoked: threading.Event = field(
+        default_factory=threading.Event, repr=False
+    )
 
 
 class Executor:
@@ -46,11 +48,11 @@ class Executor:
     def __init__(
         self,
         config: dict[str, Any],
-        backend: AwsBackend,
-        audit: AuditLog,
+        backend: ReadBackend,
+        audit: AuditSink,
         clock: Callable[[], int] = wall_time_ms,
     ) -> None:
-        self.config = dict(config)
+        self.config = copy.deepcopy(config)
         self.packages = ToolPackages.from_executor_config(config)
         self.cloudtrail_resources = (
             self.packages.cloudtrail_resources
@@ -163,6 +165,7 @@ class Executor:
                     "status": "context_opened",
                     "run_id": getattr(policy, "incident_id", context.run_id),
                     "session_id": session.session_id,
+                    "owner_uid": owner_uid,
                 }
             )
 
@@ -171,12 +174,13 @@ class Executor:
         return {
             "context_id": token,
             "expires_at_ms": context.expires_at_ms,
-            "session_id": self.sessions[token].session_id,
+            "session_id": session.session_id,
         }
 
     def _expired(self, session: Session) -> bool:
         return (
-            self.clock() >= session.context.expires_at_ms
+            session.revoked.is_set()
+            or self.clock() >= session.context.expires_at_ms
             or time.monotonic() >= session.monotonic_end
         )
 
@@ -184,7 +188,9 @@ class Executor:
         self, token: str, owner_uid: int | None = None
     ) -> dict[str, bool]:
         session = self._session(token, allow_expired=True, owner_uid=owner_uid)
-        # Wait for an in-flight call before acknowledging revocation.
+        # Stop queued calls immediately; wait for the active call to drain.
+        session.revoked.set()
+
         with session.lock, self.lock:
             self.sessions.pop(token, None)
             session.environment.clear()
@@ -206,7 +212,12 @@ class Executor:
     ) -> dict[str, bool | int]:
         session = self._session(token, owner_uid=owner_uid)
 
-        return {"active": True, "expires_at_ms": session.context.expires_at_ms}
+        with session.lock:
+            require(not self._expired(session), "context_expired")
+            return {
+                "active": True,
+                "expires_at_ms": session.context.expires_at_ms,
+            }
 
     def evidence(
         self, token: str, citations: object, owner_uid: int | None = None
@@ -260,6 +271,7 @@ class Executor:
                     session.policy, "incident_id", session.context.run_id
                 )
                 receipt["session_id"] = session.session_id
+                receipt["owner_uid"] = session.owner_uid
                 request = fields(
                     envelope["request"], {"tool", "arguments"}, set()
                 )
@@ -277,7 +289,7 @@ class Executor:
                 source = {
                     "account_id": action.account_id,
                     "region": action.region,
-                    **dict(action.parameters),
+                    **action.parameters_dict(),
                 }
 
                 self.audit.write(
@@ -292,6 +304,7 @@ class Executor:
                     ),
                     action.expires_at_ms,
                     self.clock,
+                    cancelled=session.revoked.is_set,
                 )
 
                 deadline.remaining()
@@ -358,18 +371,22 @@ class Executor:
                     }
                 )
 
-                session.receipts[request_id] = {
-                    key: result[key]
-                    for key in (
-                        "evidence_id",
-                        "observed_at_ms",
-                        "source",
-                        "sha256",
-                        "data_bytes",
-                        "truncated",
-                        "references",
-                    )
-                }
+                deadline.remaining()
+
+                session.receipts[request_id] = copy.deepcopy(
+                    {
+                        key: result[key]
+                        for key in (
+                            "evidence_id",
+                            "observed_at_ms",
+                            "source",
+                            "sha256",
+                            "data_bytes",
+                            "truncated",
+                            "references",
+                        )
+                    }
+                )
                 session.receipts[request_id].update(
                     session_id=session.session_id,
                     run_id=getattr(

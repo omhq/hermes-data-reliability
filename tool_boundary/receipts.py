@@ -1,3 +1,4 @@
+import copy
 from typing import TYPE_CHECKING, Any
 
 from .models import PolicyDenied
@@ -5,8 +6,8 @@ from .policy import fields, require
 from .wire import encode
 
 if TYPE_CHECKING:
-    from investigator.executor.executor import Session
-    from investigator.executor.models import ApprovedAction
+    from .executor import Session
+    from .models import ApprovedAction
 
 
 def references_for(
@@ -126,4 +127,4 @@ def select_receipts(session: Session, citations: object) -> dict[str, Any]:
         if receipt["truncated"]
     ]
 
-    return {"receipts": selected, "limitations": limitations}
+    return copy.deepcopy({"receipts": selected, "limitations": limitations})

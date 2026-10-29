@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from investigator.cli_output import write_json
-
-from .wire import call, encode
+from tool_boundary.wire import call, encode
 
 SOCKETS = Path("/run/hermes-lab-executor")
 

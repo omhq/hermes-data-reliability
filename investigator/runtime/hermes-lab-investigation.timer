@@ -1,0 +1,12 @@
+[Unit]
+Description=Resume pending investigations independently of collection
+PartOf=hermes-lab.target
+
+[Timer]
+OnBootSec=30
+OnUnitInactiveSec=15
+AccuracySec=1
+Unit=hermes-lab-investigation.service
+
+[Install]
+WantedBy=hermes-lab.target

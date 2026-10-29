@@ -9,7 +9,7 @@ from importlib import import_module
 from pathlib import Path
 from types import FrameType
 
-from investigator.tool_packages import ToolPackages
+from tool_boundary.catalog import ToolPackages
 
 WORKERS = Path("/tmp/hermes-lab-chats")
 

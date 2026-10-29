@@ -1,17 +1,17 @@
+import copy
 import json
 import re
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from investigator.tool_packages import ToolPackages
-
+from .catalog import ToolPackages
 from .process import run_json
 from .wire import ExecutionError
 
 if TYPE_CHECKING:
-    from investigator.executor.models import ApprovedAction
-    from investigator.executor.process import CliRunner, Deadline
+    from .models import ApprovedAction
+    from .process import CliRunner, Deadline
 
 
 CLI_PARAMETERS = {
@@ -95,7 +95,7 @@ class AwsBackend:
         self, config: dict[str, Any], runner: CliRunner = run_json
     ) -> None:
         validate_config(config)
-        self.config = dict(config)
+        self.config = copy.deepcopy(config)
         self.runner = runner
 
     def _call(
@@ -125,9 +125,6 @@ class AwsBackend:
         ]
 
         names = dict(CLI_PARAMETERS[operation])
-
-        if operation == "filter-log-events" and "nextToken" in parameters:
-            names["nextToken"] = "--next-token"
 
         expected = set(names) | (
             {"unmask"} if operation == "filter-log-events" else set()
@@ -216,20 +213,32 @@ class AwsBackend:
         environment: dict[str, str],
         deadline: Deadline,
     ) -> tuple[dict[str, Any], bytes | None]:
+        if (
+            action.account_id != self.config["account_id"]
+            or action.region != self.config["region"]
+            or action.max_pages != 1
+        ):
+            raise ExecutionError("invalid_execution_plan")
+
         operations = {
             ("s3", "GetObject"): ("s3api", "get-object"),
             ("s3", "ListObjectsV2"): ("s3api", "list-objects-v2"),
             ("logs", "FilterLogEvents"): ("logs", "filter-log-events"),
             ("cloudtrail", "LookupEvents"): ("cloudtrail", "lookup-events"),
         }
-        service, operation = operations[(action.service, action.operation)]
+        selected = operations.get((action.service, action.operation))
+
+        if selected is None:
+            raise ExecutionError("invalid_execution_plan")
+
+        service, operation = selected
 
         if action.operation != "GetObject":
             return (
                 self._call(
                     service,
                     operation,
-                    dict(action.parameters),
+                    action.parameters_dict(),
                     environment,
                     deadline,
                 ),
@@ -241,7 +250,7 @@ class AwsBackend:
             metadata = self._call(
                 service,
                 operation,
-                dict(action.parameters),
+                action.parameters_dict(),
                 environment,
                 deadline,
                 body=body,

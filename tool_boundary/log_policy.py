@@ -6,7 +6,7 @@ from .policy import fields, integer, require, validate_context, wall_time_ms
 from .resource_policy import ResourcePolicy
 
 if TYPE_CHECKING:
-    from investigator.executor.models import ApprovedAction
+    from .models import ApprovedAction
 
 
 class LogPolicy(ResourcePolicy):

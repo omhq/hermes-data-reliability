@@ -1,12 +1,11 @@
-import json
 import re
 from typing import TYPE_CHECKING, Any
 
 from .cloudtrail import cloudtrail_events
-from .wire import ExecutionError, encode
+from .wire import ExecutionError, decode, encode
 
 if TYPE_CHECKING:
-    from investigator.executor.models import ApprovedAction
+    from .models import ApprovedAction
 
 
 def integer_parameter(action: ApprovedAction, name: str, minimum: int) -> int:
@@ -84,6 +83,19 @@ def listing_result(
     ):
         raise ExecutionError("invalid_aws_response")
 
+    for field, expected in (
+        ("Name", action.parameters["Bucket"]),
+        ("Prefix", action.parameters["Prefix"]),
+    ):
+        if field in response and response[field] != expected:
+            raise ExecutionError("invalid_aws_response")
+
+    if "KeyCount" in response and (
+        type(response["KeyCount"]) is not int
+        or response["KeyCount"] != len(contents)
+    ):
+        raise ExecutionError("invalid_aws_response")
+
     scope = action.exact_key or action.key_prefix
 
     if scope is None:
@@ -94,6 +106,9 @@ def listing_result(
     filtered = False
 
     for entry in contents:
+        if type(entry) is not dict:
+            raise ExecutionError("invalid_aws_response")
+
         key = entry.get("Key")
         scoped = type(key) is str and (
             key == scope if action.exact_key else key.startswith(scope)
@@ -114,11 +129,21 @@ def listing_result(
 
     data, partial = fit_items("objects", items[:maximum], action.max_bytes)
 
+    # Missing completion metadata cannot establish absence of an object.
+    complete = (
+        response.get("IsTruncated") is False
+        and type(response.get("KeyCount")) is int
+        and response["KeyCount"] == len(contents)
+        and response.get("Name") == action.parameters["Bucket"]
+        and response.get("Prefix") == action.parameters["Prefix"]
+        and not response.get("CommonPrefixes")
+    )
+
     return data, (
         partial
         or filtered
         or len(items) > maximum
-        or response.get("IsTruncated", False)
+        or not complete
         or bool(response.get("NextContinuationToken"))
     )
 
@@ -126,7 +151,7 @@ def listing_result(
 def logs_result(
     action: ApprovedAction, response: dict[str, Any]
 ) -> tuple[dict[str, Any], bool]:
-    events = response.get("events", [])
+    events = response.get("events")
 
     if type(events) is not list:
         raise ExecutionError("invalid_aws_response")
@@ -138,6 +163,9 @@ def logs_result(
     filtered = False
 
     for event in events:
+        if type(event) is not dict:
+            raise ExecutionError("invalid_aws_response")
+
         timestamp = event.get("timestamp")
         message = event.get("message")
 
@@ -145,8 +173,8 @@ def logs_result(
             raise ExecutionError("invalid_aws_response")
 
         try:
-            structured = json.loads(message)
-        except ValueError, RecursionError:
+            structured = decode(message)
+        except ExecutionError:
             structured = None
 
         if (

@@ -1,8 +1,43 @@
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any
 
 type ResolvedRead = tuple[str, str, dict[str, Any], str | None, str | None]
+
+
+def freeze_parameters(
+    parameters: Mapping[str, object],
+) -> Mapping[str, object]:
+    if any(type(key) is not str for key in parameters):
+        raise ValueError("invalid_execution_plan")
+
+    return MappingProxyType(
+        {key: freeze_value(value) for key, value in parameters.items()}
+    )
+
+
+def freeze_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return freeze_parameters(value)
+    if type(value) is list or type(value) is tuple:
+        return tuple(freeze_value(item) for item in value)
+    if value is None or type(value) in (str, bool, int):
+        return value
+    if type(value) is float and math.isfinite(value):
+        return value
+
+    raise ValueError("invalid_execution_plan")
+
+
+def thaw_value(value: object) -> Any:
+    if isinstance(value, Mapping):
+        return {key: thaw_value(item) for key, item in value.items()}
+    if type(value) is tuple:
+        return [thaw_value(item) for item in value]
+
+    return value
 
 
 class PolicyDenied(PermissionError):
@@ -83,7 +118,12 @@ class ApprovedAction:
     max_pages: int = 1
 
     def __post_init__(self) -> None:
-        # Freeze a copy so mutation of a caller's dictionary cannot change it!
         object.__setattr__(
-            self, "parameters", MappingProxyType(dict(self.parameters))
+            self, "parameters", freeze_parameters(self.parameters)
         )
+
+    def parameters_dict(self) -> dict[str, Any]:
+        """Return a detached provider payload from the immutable plan."""
+        return {
+            key: thaw_value(value) for key, value in self.parameters.items()
+        }

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from investigator.cli_output import write_json
-from investigator.executor.wire import call
+from tool_boundary.wire import call
 
 ROOT = Path("/opt/hermes-lab-plugins")
 SOCKETS = Path("/run/hermes-lab-executor")

@@ -1,5 +1,3 @@
-"""Run explicit evaluation cases through the deployed collector."""
-
 import argparse
 import json
 import sqlite3
@@ -54,7 +52,7 @@ def run_case(
         )
 
     for _ in range(MAX_POLLS):
-        if not row or not row["attempts"]:
+        if not row:
             result = subprocess.run(
                 [
                     str(collector_python),
@@ -66,18 +64,42 @@ def run_case(
                     str(observations),
                     "--findings",
                     str(findings),
-                    "--retry-incident",
-                    run_id,
                 ],
                 cwd=code,
                 capture_output=True,
                 text=True,
-                timeout=390,
+                timeout=90,
             )
 
             if result.returncode:
                 raise RuntimeError(
                     "Collector command failed; inspect its host status"
+                )
+
+            row = read_incident(findings, run_id)
+
+        if row and not row["attempts"]:
+            result = subprocess.run(
+                [
+                    str(collector_python),
+                    "-m",
+                    "investigator.runtime.investigation_worker",
+                    "--config",
+                    str(config),
+                    "--findings",
+                    str(findings),
+                    "--incident",
+                    run_id,
+                ],
+                cwd=code,
+                capture_output=True,
+                text=True,
+                timeout=330,
+            )
+
+            if result.returncode:
+                raise RuntimeError(
+                    "Investigation command failed; inspect its host status"
                 )
 
             row = read_incident(findings, run_id)

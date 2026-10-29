@@ -1,7 +1,7 @@
 import sqlite3
 from typing import TYPE_CHECKING, Any, Callable
 
-from investigator.executor.wire import ExecutionError
+from investigator.aws_cli import AwsCallError
 
 from .cloudwatch import MAX_PAGES, MAX_WINDOW_MS
 from .definition import duration
@@ -117,7 +117,7 @@ def collect_source(
                 )
 
                 if continuation is not None and continuation == token:
-                    raise ExecutionError("pagination_not_advancing")
+                    raise AwsCallError("pagination_not_advancing")
 
                 matches = matcher.match([event["message"] for event in events])
 
@@ -170,7 +170,7 @@ def collect_source(
         # pages already committed. This also recovers expired provider tokens.
         safe_error = (
             error.code
-            if isinstance(error, ExecutionError)
+            if isinstance(error, AwsCallError)
             else str(error)
             if isinstance(error, MatchError)
             else type(error).__name__

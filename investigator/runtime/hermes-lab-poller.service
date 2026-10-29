@@ -1,7 +1,7 @@
 [Unit]
-Description=Collect configured CloudWatch log matches and investigate with Hermes
-After=hermes-lab-runtime.service network-online.target
-Requires=hermes-lab-runtime.service
+Description=Collect configured CloudWatch log matches into the incident database
+Wants=network-online.target
+After=network-online.target
 PartOf=hermes-lab.target
 ConditionPathExists=/srv/hermes-lab/ops/enabled
 
@@ -13,7 +13,7 @@ UMask=0077
 Environment=AWS_DEFAULT_REGION=us-east-1
 WorkingDirectory=/srv/hermes-lab/code
 ExecStart=/srv/hermes-lab/collector-venv-py314/bin/python -m investigator.collector.poll --config /etc/hermes-lab/executor.json --observations /srv/hermes-lab/observations.yaml --findings /srv/hermes-lab/findings
-TimeoutStartSec=390
+TimeoutStartSec=90
 NoNewPrivileges=true
 PrivateTmp=true
 

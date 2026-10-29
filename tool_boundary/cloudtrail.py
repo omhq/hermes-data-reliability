@@ -1,13 +1,13 @@
-import json
 import math
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from .wire import ExecutionError
+from .wire import ExecutionError, decode
 
 if TYPE_CHECKING:
-    from investigator.executor.models import ApprovedAction
+    from .models import ApprovedAction
 
 
 def timestamp_ms(value: object) -> int:
@@ -54,9 +54,9 @@ def cloudtrail_events(
     attributes = action.parameters["LookupAttributes"]
 
     if (
-        type(attributes) is not list
+        type(attributes) is not tuple
         or len(attributes) != 1
-        or type(attributes[0]) is not dict
+        or not isinstance(attributes[0], Mapping)
         or attributes[0].get("AttributeKey") != "ResourceName"
         or type(attributes[0].get("AttributeValue")) is not str
     ):
@@ -95,8 +95,8 @@ def cloudtrail_events(
             continue
 
         try:
-            original = json.loads(event["CloudTrailEvent"])
-        except KeyError, TypeError, ValueError, RecursionError:
+            original = decode(event["CloudTrailEvent"])
+        except KeyError, TypeError, ExecutionError:
             raise ExecutionError("invalid_aws_response") from None
 
         if (

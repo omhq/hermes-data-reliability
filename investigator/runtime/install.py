@@ -9,17 +9,18 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-from investigator.collector.ledger import UnsupportedLedger, validate_schema
+from investigator.incidents.database import UnsupportedLedger, validate_schema
 from investigator.logging_config import configure_logging
 
 from .containers import validate_image, verify_image_python
+from .locking import investigation_lock
 from .notification_store import (
     DATABASE_NAME,
 )
 from .notification_store import (
     validate_schema as validate_notifications,
 )
-from .sessions import SessionUnavailable, investigation_lock
+from .sessions import SessionUnavailable
 
 ROOT = Path("/srv/hermes-lab")
 RELEASE = Path(__file__).resolve().parents[2]
@@ -138,6 +139,14 @@ def stop_services() -> None:
             "stop",
             "hermes-lab-notifications.timer",
             "hermes-lab-notifications.service",
+        )
+
+    if (units / "hermes-lab-investigation.timer").exists():
+        run(
+            "systemctl",
+            "stop",
+            "hermes-lab-investigation.timer",
+            "hermes-lab-investigation.service",
         )
 
     if (units / "hermes-lab-health.timer").exists():

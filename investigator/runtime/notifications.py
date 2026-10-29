@@ -11,15 +11,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from investigator.collector.findings import TEXT_FIELDS
-from investigator.collector.ledger import validate_schema
-from investigator.executor.aws import host_environment
-from investigator.executor.process import CliRunner, Deadline, run_json
-from investigator.executor.wire import ExecutionError
+from investigator.aws_cli import (
+    AwsCallError,
+    CliRunner,
+    Deadline,
+    host_environment,
+    run_json,
+)
+from investigator.incidents.database import validate_schema
 from investigator.logging_config import configure_logging
+from investigator.runtime.findings import TEXT_FIELDS
 
 from . import notification_store as store
-from .sessions import investigation_lock
+from .locking import investigation_lock
 
 LOGGER = logging.getLogger(__name__)
 ROOT = Path("/srv/hermes-lab")
@@ -163,7 +167,7 @@ class Publisher:
         )
 
     def publish(self, subject: str, message: str) -> str:
-        deadline = Deadline(40, int(time.time() * 1000) + 40000, clock_ms)
+        deadline = Deadline(40)
         identity = self.call("sts", "get-caller-identity", [], deadline)
         expected = (
             f"arn:aws:sts::{self.config.account_id}:assumed-role/"
@@ -175,7 +179,7 @@ class Publisher:
         ) != self.config.account_id or not identity.get("Arn", "").startswith(
             expected
         ):
-            raise ExecutionError("unexpected_aws_identity")
+            raise AwsCallError("unexpected_aws_identity")
 
         result = self.call(
             "sns",
@@ -193,13 +197,9 @@ class Publisher:
         message_id = result.get("MessageId")
 
         if type(message_id) is not str or not message_id:
-            raise ExecutionError("invalid_publish_response")
+            raise AwsCallError("invalid_publish_response")
 
         return message_id
-
-
-def clock_ms() -> int:
-    return int(time.time() * 1000)
 
 
 def deliver_one(
@@ -219,7 +219,7 @@ def deliver_one(
         # Provider errors and agent text must not enter diagnostics.
         safe_error = (
             error.code
-            if isinstance(error, ExecutionError)
+            if isinstance(error, AwsCallError)
             else type(error).__name__
         )
 
@@ -268,14 +268,12 @@ def main() -> None:
             return
 
         with closing(store.connect(findings / store.DATABASE_NAME)) as db:
-            with investigation_lock(findings / ".poll.lock") as available:
-                if available:
-                    store.enqueue(
-                        db,
-                        config.topic_arn,
-                        snapshot(database, config),
-                        int(time.time()),
-                    )
+            store.enqueue(
+                db,
+                config.topic_arn,
+                snapshot(database, config),
+                int(time.time()),
+            )
 
             if args.send_incident:
                 with db:

@@ -2,7 +2,7 @@ import json
 import re
 from typing import TYPE_CHECKING, Any
 
-from investigator.executor.wire import decode
+from investigator.json_input import decode
 
 if TYPE_CHECKING:
     from investigator.runtime.sessions import InvestigationSession

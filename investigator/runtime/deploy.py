@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 
 from investigator.logging_config import configure_logging
-from investigator.tool_packages import ToolPackages
+from tool_boundary.catalog import ToolPackages
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOGGER = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
     archive = io.BytesIO()
     paths = []
 
-    for folder in ("investigator", "pipeline", "evals"):
+    for folder in ("investigator", "tool_boundary", "pipeline", "evals"):
         paths.extend((root / folder).rglob("*"))
 
     with tarfile.open(fileobj=archive, mode="w") as bundle:

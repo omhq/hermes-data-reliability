@@ -2,9 +2,15 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Any, Collection, Hashable
+from typing import Any, Hashable
 
 import yaml
+
+from investigator.incidents.specification import (
+    DefinitionError,
+    fields,
+    validate_investigation,
+)
 
 MAX_DEFINITION_BYTES = 65536
 MAX_RULES = 64
@@ -13,10 +19,6 @@ SEVERITIES = {"warning": 1, "error": 2, "critical": 3}
 DEFAULT_OBSERVATIONS = (
     Path(__file__).resolve().parents[1] / "runtime/observations.yaml"
 )
-
-
-class DefinitionError(ValueError):
-    """Configuration errors exclude raw YAML and log contents."""
 
 
 class Loader(yaml.SafeLoader):
@@ -59,21 +61,6 @@ class Loader(yaml.SafeLoader):
             result[key] = self.construct_object(value_node, deep=deep)
 
         return result
-
-
-def fields(
-    value: object, required: Collection[str], optional: Collection[str] = ()
-) -> dict[str, Any]:
-    """Return the mapping after checking its keys and required fields."""
-    if (
-        type(value) is not dict
-        or not set(required) <= value.keys()
-        or not value.keys() <= set(required) | set(optional)
-        or any(type(key) is not str for key in value)
-    ):
-        raise DefinitionError("Unexpected or missing configuration fields")
-
-    return value
 
 
 def duration(value: object, minimum: int, maximum: int) -> int:
@@ -131,23 +118,6 @@ def condition(
 def fingerprint(value: object) -> str:
     serialized = json.dumps(value, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode()).hexdigest()
-
-
-def validate_investigation(value: object, *, defaults: bool = False) -> None:
-    limits = {"objective": 4000, "instructions": 8000}
-    value = fields(
-        value, limits if defaults else (), () if defaults else limits
-    )
-
-    for key, text in value.items():
-        maximum = limits[key]
-
-        if type(text) is not str or not text.strip() or len(text) > maximum:
-            raise DefinitionError("Invalid investigation " + key)
-        if len(json.dumps(text, ensure_ascii=False).encode()) > maximum * 2:
-            raise DefinitionError(
-                "Investigation " + key + " exceeds byte limit"
-            )
 
 
 def investigation_settings(

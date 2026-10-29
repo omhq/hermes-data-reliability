@@ -16,12 +16,12 @@ LOGGER = logging.getLogger(__name__)
 
 def build_archive(root: Path = PROJECT_ROOT) -> bytes:
     output = io.BytesIO()
-    paths = list((root / "investigator/executor").glob("*.py")) + [
+    paths = list((root / "tool_boundary").glob("*.py")) + [
         root / "investigator/__init__.py",
-        root / "investigator/tool_packages.py",
         root / "investigator/logging_config.py",
         root / "investigator/cli_output.py",
         root / "investigator/runtime/__init__.py",
+        root / "investigator/runtime/verify_executor.py",
         root / "investigator/runtime/install_executor.py",
         root / "investigator/runtime/hermes-lab-executor.service",
     ]

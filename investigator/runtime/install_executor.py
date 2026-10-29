@@ -60,20 +60,18 @@ def main() -> None:
 
     if not release.exists():
         shutil.copytree(
-            args.source / "investigator/executor",
-            release / "investigator/executor",
+            args.source / "tool_boundary",
+            release / "tool_boundary",
         )
-
-        for name in (
-            "__init__.py",
-            "tool_packages.py",
-            "logging_config.py",
-            "cli_output.py",
+        for relative in (
+            "investigator/__init__.py",
+            "investigator/cli_output.py",
+            "investigator/runtime/__init__.py",
+            "investigator/runtime/verify_executor.py",
         ):
-            shutil.copy2(
-                args.source / "investigator" / name,
-                release / "investigator" / name,
-            )
+            destination = release / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(args.source / relative, destination)
 
     for path in (ROOT, ROOT / "releases", release, *release.rglob("*")):
         os.chown(path, 0, 0)

@@ -4,6 +4,8 @@ import subprocess
 import sys
 import time
 
+from investigator.runtime.locking import investigation_lock
+
 from .launch import (
     finish_worker,
     stop_on_disconnect,
@@ -13,7 +15,6 @@ from .launch import (
 from .sessions import (
     InvestigationSession,
     SessionUnavailable,
-    investigation_lock,
 )
 
 

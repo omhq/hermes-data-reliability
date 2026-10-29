@@ -1,15 +1,14 @@
 import json
 from typing import Any
 
+from investigator.incidents.specification import validate_investigation
+from investigator.runtime.findings import parse_result
 from investigator.runtime.launch import run_once, stop_on_disconnect
 from investigator.runtime.sessions import (
-    COLLECTOR_SOCKET,
+    INCIDENT_SOCKET,
     InvestigationSession,
 )
-from investigator.tool_packages import ToolPackages
-
-from .definition import validate_investigation
-from .findings import parse_result
+from tool_boundary.catalog import ToolPackages
 
 
 def incident_specification(row: dict[str, Any]) -> dict[str, Any]:
@@ -120,7 +119,7 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     with (
         stop_on_disconnect(),
         InvestigationSession(
-            specification, control_socket=COLLECTOR_SOCKET
+            specification, control_socket=INCIDENT_SOCKET
         ) as session,
     ):
         stdout = run_once(session, prompt)

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from investigator.cli_output import write_json
-from investigator.collector.ledger import budget_status
+from investigator.incidents.queue import budget_status
 from investigator.logging_config import configure_logging
 
 from .containers import verify_image_python
@@ -46,7 +46,9 @@ def pause() -> None:
         "systemctl",
         "stop",
         "hermes-lab-poller.timer",
+        "hermes-lab-investigation.timer",
         "hermes-lab-poller.service",
+        "hermes-lab-investigation.service",
         "hermes-lab-notifications.timer",
         "hermes-lab-notifications.service",
         "hermes-lab-runtime.service",
@@ -88,6 +90,7 @@ def start_services() -> None:
         "hermes-lab-tools.service",
         "hermes-lab-runtime.service",
         "hermes-lab-poller.timer",
+        "hermes-lab-investigation.timer",
         "hermes-lab-notifications.timer",
     )
 
@@ -117,6 +120,7 @@ def status() -> None:
         "show",
         "hermes-lab.target",
         "hermes-lab-poller.timer",
+        "hermes-lab-investigation.timer",
         "hermes-lab-health.timer",
         "hermes-lab-notifications.timer",
         "hermes-lab-executor.service",
@@ -168,6 +172,7 @@ def restore_files(source: str | Path) -> None:
     for service in (
         "hermes-lab-runtime.service",
         "hermes-lab-poller.service",
+        "hermes-lab-investigation.service",
         "hermes-lab-notifications.service",
     ):
         result = subprocess.run(["systemctl", "is-active", "--quiet", service])
