@@ -57,7 +57,7 @@ def run_case(
                 [
                     str(collector_python),
                     "-m",
-                    "investigator.collector.poll",
+                    "collector.poll",
                     "--config",
                     str(config),
                     "--observations",

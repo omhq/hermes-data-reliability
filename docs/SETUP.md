@@ -1,35 +1,34 @@
 # Setup
 
-Run workstation commands from the repository root. Requirements: Terraform
-1.5.7+, AWS CLI, Python 3.14, a deployment profile, and an SSH key pair.
+You'll need Terraform 1.5.7+, AWS CLI, Python 3.14, a deployment profile, and an
+SSH key pair. Run commands on your local machine from the repository root.
 
 ## Provision AWS
 
-The roots have independent inputs, providers, and state:
+The Terraform roots are independent: each has its own inputs, provider, and state.
 
 | Root | Owns |
 | --- | --- |
-| `infra/aws-agent` | EC2, its network, host/executor IAM, report email, health, and backups |
-| `infra/aws-pipeline` | S3, SQS, producer/processor Lambdas, logs, and Scheduler |
+| `infra/aws-agent` | EC2, network, IAM, report email, health, backups |
+| `infra/aws-pipeline` | S3, SQS, Lambdas, logs, Scheduler |
 
-Neither root reads the other's configuration, outputs, or state. You can deploy
-and remove either independently. The agent takes explicit existing evidence
-locations; those resources can be provisioned by any system. Its current executor
+Neither reads the other's configuration or state. You can deploy/remove either
+separately. Agent evidence locations may come from any system; current access
 supports one bucket's `input/`, `output/`, and `runs/` prefixes and one log group.
 
-Confirm each root's deployment account with its explicitly configured profile:
+Confirm each deployment account with its explicit profile:
 
 ```bash
 aws sso login --profile YOUR_PROFILE
 aws sts get-caller-identity --profile YOUR_PROFILE --query Account --output text
 ```
 
-For a new checkout, copy each root's `terraform.tfvars.example` to its ignored
-`terraform.tfvars`. Configure `aws_profile`, `expected_account_id`, `aws_region`,
+For a new checkout, copy each `terraform.tfvars.example` to ignored
+`terraform.tfvars`. Set `aws_profile`, `expected_account_id`, `aws_region`,
 and `project_name` independently.
 
-The optional synthetic pipeline requires S3, SQS, IAM, Lambda, Scheduler,
-CloudWatch, and `iam:PassRole`. Keep generation disabled until smoke tests pass:
+The optional synthetic pipeline needs S3, SQS, IAM, Lambda, Scheduler, CloudWatch,
+and `iam:PassRole`. Keep generation disabled until smoke tests pass:
 
 ```bash
 terraform -chdir=infra/aws-pipeline init
@@ -39,30 +38,29 @@ terraform -chdir=infra/aws-pipeline plan -out=pipeline.tfplan
 terraform -chdir=infra/aws-pipeline show pipeline.tfplan
 ```
 
-Review the saved plan before applying:
+Review the saved plan, then apply:
 
 ```bash
 terraform -chdir=infra/aws-pipeline apply pipeline.tfplan
 ```
 
-Inspect this pipeline's public identifiers with
-`terraform -chdir=infra/aws-pipeline output -json pipeline`.
-To observe it, explicitly enter its bucket and log group in the agent's inputs;
-there is no automatic connection between the roots.
+Inspect identifiers with `terraform -chdir=infra/aws-pipeline output -json pipeline`.
+Enter its bucket/log group explicitly in the agent inputs; the roots do not
+connect automatically.
 
-Configure the agent's inputs:
+Configure the agent:
 
 | Input | Value |
 | --- | --- |
-| `ssh_key_name` | Existing EC2 key pair; alternatively use `ssh_public_key_path` |
+| `ssh_key_name` | Existing EC2 key pair, or use `ssh_public_key_path` |
 | `ssh_cidr` | Trusted public IPv4 `/32`; wider than `/24` is rejected |
 | `ami_id` | Reviewed Amazon Linux 2023 x86_64 image |
-| `evidence_bucket_name` | Existing authorized evidence bucket |
-| `evidence_log_group` | Existing authorized CloudWatch log group |
-| `alert_email` | Optional recipient for agent reports |
+| `evidence_bucket_name` | Authorized existing bucket |
+| `evidence_log_group` | Authorized existing log group |
+| `alert_email` | Optional report recipient |
 
-Agent provisioning requires EC2/VPC, IAM, CloudWatch, SNS, Backup, KMS, and
-`iam:PassRole`. Keys and SSO tokens stay outside Terraform; gateway/dashboard
+Agent provisioning needs EC2/VPC, IAM, CloudWatch, SNS, Backup, KMS, and
+`iam:PassRole`. Keep keys/SSO tokens outside Terraform. Gateway/dashboard
 ports stay closed.
 
 ```bash
@@ -73,8 +71,8 @@ terraform -chdir=infra/aws-agent plan -out=agent.tfplan
 terraform -chdir=infra/aws-agent show agent.tfplan
 ```
 
-Review account, region, SSH source, evidence access, and replacements. Pin any
-discovered AMI and regenerate the plan before applying:
+Review account, region, SSH source, access, and replacements. Pin any discovered
+AMI and regenerate the plan before applying:
 
 ```bash
 terraform -chdir=infra/aws-agent apply agent.tfplan
@@ -82,14 +80,12 @@ terraform -chdir=infra/aws-agent apply agent.tfplan
 
 ## Deploy the runtime
 
-Select tool packages in `investigator/runtime/config.yaml` before planning the
-agent root. The [tool package guide](ACCESS.md#tool-packages) lists package names,
-CloudTrail resource configuration, and host enforcement.
-Deployment rejects a YAML selection that differs from the saved Terraform
-output before uploading source.
+Choose [tool packages](ACCESS.md#tool-packages) in
+`investigator/runtime/config.yaml` before planning the agent root. Deployment
+rejects selections that differ from saved Terraform outputs before uploading.
 
-Follow [verified SSH setup](OPERATIONS.md#connect-from-your-workstation).
-On EC2, check bootstrap:
+Follow [verified SSH setup](OPERATIONS.md#connect-from-your-local-machine).
+On the runtime host, check bootstrap:
 
 ```bash
 sudo cloud-init status --wait
@@ -97,41 +93,46 @@ test -f /srv/hermes-lab/bootstrap-complete
 docker version
 ```
 
-Bootstrap installs Python 3.14. On an existing EC2 host, install it first:
+Bootstrap installs Python 3.14. On an existing host, install it first:
 
 ```bash
 sudo dnf install -y --releasever=latest python3.14 python3.14-pip
 /usr/bin/python3.14 --version
 ```
 
-Leave the OS's `/usr/bin/python3` unchanged; project services use
-`/usr/bin/python3.14`. Bootstrap edits can replace EC2 via
-`user_data_replace_on_change`; review plans and preserve state. To update an
-existing host, use the package install above and source deployment below.
+Leave `/usr/bin/python3` alone; project services use `/usr/bin/python3.14`.
+Bootstrap edits can replace EC2 via `user_data_replace_on_change`; review plans
+and preserve state. Existing hosts can use the install above and deployment below.
 
-On the workstation, adjust the key path as needed:
+On your local machine, adjust the key path:
 
 ```bash
 python3.14 -m investigator.runtime.deploy --ssh-key ~/.ssh/experiment.pem \
   --known-hosts .local/known_hosts --activate
 ```
 
-Deployment and recovery read only `infra/aws-agent` state. Deployment uses its
-saved SSH destination; review a refresh-only plan if stale. Without `--activate`,
-it only stages source. Activation pulls the pinned
-image (15-minute limit), verifies Python (30-second probe), builds tools,
-checkpoints state, and installs the executor. It preserves pause choice,
-authentication, and findings. Unsupported incident database formats stop
-activation before services stop, without conversion/reset.
+Deployment/recovery read only agent Terraform state. Deployment uses its saved
+SSH destination; review a refresh-only plan if stale. Without `--activate`,
+source is staged only. Activation:
 
-Activation prepares `/srv/hermes-lab/collector-venv-py314` with pinned PyYAML
-and validates patterns in a bounded worker. First use installs
-`investigator/runtime/observations.yaml`; later activations preserve/validate
-your YAML and its required investigation defaults. Lambda also uses Python
-3.14; image changes verify the interpreter before services stop.
-Collection uses `/etc/hermes-lab/executor.json` as its independent allowlist.
+- Pulls the pinned image (15-minute limit) and verifies Python (30-second probe).
+- Builds tools, checkpoints state, and installs the executor and separate timers.
+- Preserves pause choice, authentication, and findings.
+- Requires incident schema 2; incompatible formats stop activation before
+  services stop, without migration or reset.
 
-On a fresh EC2 host, authenticate Hermes:
+The release includes `collector`, `incidents`, `host_aws`, `investigator`, and
+`tool_boundary`. Investigation uses host Python 3.14 and the standard library.
+Collection runs `python -m collector.poll` in
+`/srv/hermes-lab/collector-venv-py314`, with pinned PyYAML and bounded pattern checks.
+Its independent allowlist is `/etc/hermes-lab/executor.json`.
+
+First installation explicitly supplies `investigator/runtime/observations.yaml`.
+Later activations preserve and validate your installed YAML, including required
+investigation defaults. Both workers share persistent `findings/incidents.sqlite3`.
+Lambda uses Python 3.14 too; image changes verify Python before services stop.
+
+On a fresh runtime host, log in to Hermes:
 
 ```bash
 image=$(cat /srv/hermes-lab/code/investigator/runtime/image.txt)
@@ -141,23 +142,24 @@ sudo labctl start
 sudo labctl status
 ```
 
-Approve the device login; if prompted, enable device-code sign-in in ChatGPT
-Security Settings and request a new code. Later logins use `sudo labctl login`.
-Keep OAuth files on EC2; do not copy another installation's credentials.
+Approve the device login. If prompted, enable device-code sign-in in ChatGPT
+Security Settings, then request a new code. Later logins use `sudo labctl login`.
+Keep OAuth files on the runtime host; never borrow another installation's
+credentials.
 
 ## Enable generation
 
-Invoke the producer with unique `scheduled_at` values for `scenario: "success"`
-and `scenario: "malformed"`. Check uploads, SQS, logs, and output/attempt objects
-via [Operations](OPERATIONS.md). The processor expects SQS, not Scheduler payloads.
+Time for a smoke test. Invoke the producer with unique `scheduled_at` values
+for `scenario: "success"` and `scenario: "malformed"`. Check uploads, SQS, logs,
+and output/attempt objects using [Operations](OPERATIONS.md). The processor
+expects SQS messages, not Scheduler payloads.
 
-Set `pipeline_schedule_enabled = true` in `infra/aws-pipeline/terraform.tfvars`
-and review/apply a pipeline plan. Agent health, report delivery, and backups
-are configured and checked separately.
+Then set `pipeline_schedule_enabled = true` in the pipeline `terraform.tfvars`
+and review/apply a plan. Check agent health, email, and backups separately.
 
 ## Access verification
 
-After smoke fixtures exist, run IAM policy checks from the workstation:
+After smoke fixtures exist, run IAM checks from your local machine:
 
 ```bash
 mkdir -p .local
@@ -166,8 +168,8 @@ python3.14 -m investigator.runtime.verify_investigator_access policy \
   --profile YOUR_PROFILE --config .local/investigator.json
 ```
 
-Write/delete checks use IAM simulation, which may differ from live behavior.
-After full deployment, run live checks on EC2:
+Write/delete checks use IAM simulation, which can differ from live behavior.
+After deployment, run live checks on the runtime host:
 
 ```bash
 cd /srv/hermes-lab/code
@@ -175,11 +177,11 @@ python3.14 -m investigator.runtime.verify_investigator_access live \
   --config /srv/hermes-lab/investigator.json
 ```
 
-Live checks use the host role, sample at most 1 KiB/prefix, test allowed/denied
-reads, and never print credentials.
+These use the host role, sample at most 1 KiB/prefix, test allowed/denied reads,
+and never print credentials.
 
 Full activation includes the executor. For a separate update or isolated plugin
-check, run on the workstation:
+check, run on your local machine:
 
 ```bash
 python3.14 -m investigator.runtime.deploy_executor \
@@ -188,18 +190,17 @@ python3.14 -m investigator.runtime.deploy_plugin \
   --ssh-key ~/.ssh/experiment.pem --known-hosts .local/known_hosts
 ```
 
-Executor releases live under `/opt/hermes-lab-executor/`; plugin checks stage
-under `/opt/hermes-lab-plugins/releases/`. Native discovery/dispatch uses a
-short-lived context in a network-isolated container, without provider credentials
-or model calls. Cleanup revokes access; both commands preserve runtime/pause state.
+Executor releases go under `/opt/hermes-lab-executor/`; plugin checks stage under
+`/opt/hermes-lab-plugins/releases/`. Discovery/dispatch uses a short-lived context
+in a network-isolated container, with no provider credentials or model calls.
+Cleanup revokes access. Both commands preserve runtime/pause state.
 
-On EC2, verify the executor:
+On the runtime host, verify the executor:
 
 ```bash
 sudo systemctl is-active hermes-lab-executor.service
-sudo sh -c 'cd /opt/hermes-lab-executor/code && python3.14 -m investigator.executor.verify'
+sudo sh -c 'cd /opt/hermes-lab-executor/code && python3.14 -m investigator.runtime.verify_executor'
 ```
 
-Verification checks reads, denials, bounds, budgets, receipts, and revocation.
-`--restart-check` also restarts the executor to test old-token denial.
-
+Checks cover reads, denials, bounds, budgets, receipts, and revocation.
+`--restart-check` also restarts it to verify old-token denial.

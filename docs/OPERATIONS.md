@@ -1,26 +1,29 @@
 # Operating Hermes Lab
 
-Daily controls for the deployed investigator.
+Your day-to-day controls: start the lab, follow the evidence, and pause when
+you're done. The agent and synthetic pipeline have separate switches.
 
-## Connect from your workstation
+“Your local machine” is your computer; the “runtime host” runs the collector
+and investigator. Commands below use the current Linux/systemd deployment.
 
-Run workstation commands from the repository root:
+## Connect from your local machine
+
+Run commands on your local machine from the repository root:
 
 ```bash
 cd /path/to/hermes-data-reliability
 ```
 
-Substitute your profile, region, and key below; the profile must match
-`infra/aws-agent/terraform.tfvars`. Keep keys, variables, and state out of Git.
-
-If AWS reports an expired SSO session:
+Replace profile, region, and key placeholders with your agent Terraform inputs
+(`infra/aws-agent/terraform.tfvars`). Keep keys, variables, and state out of Git.
+If SSO has expired:
 
 ```bash
 aws sso login --profile YOUR_PROFILE
 ```
 
-Get the instance ID from Terraform and its live IP from AWS; stop/start can
-change the address:
+Get the instance ID from Terraform and its live IP from AWS. Stop/start can
+change the IP:
 
 ```bash
 lab_instance_id=$(terraform -chdir=infra/aws-agent output -raw instance_id)
@@ -31,7 +34,7 @@ lab_ip=$(aws ec2 describe-instances \
 printf 'SSH destination: ec2-user@%s\n' "$lab_ip"
 ```
 
-If the IP is empty or `None`, check instance state. Otherwise connect:
+If the IP is empty or `None`, check instance state. Otherwise:
 
 ```bash
 ssh -i ~/.ssh/experiment.pem \
@@ -41,66 +44,63 @@ ssh -i ~/.ssh/experiment.pem \
   "ec2-user@$lab_ip"
 ```
 
-For port-22 timeouts, compare your current public IPv4 with `ssh_cidr` and the
-live security group. Update the trusted `/32` if needed; review the plan first.
+For port-22 timeouts, compare your public IPv4, `ssh_cidr`, and the live security
+group. Review a plan before changing the trusted `/32`.
 
-For first/replacement connections, verify the host fingerprint against the EC2
-console system log. Create `.local/` and use `StrictHostKeyChecking=ask` for that
-verified connection, then `yes`. Never bypass checking or blindly remove warnings.
+For a first or replacement connection, verify the fingerprint against the EC2
+console system log. Create `.local/`, use `StrictHostKeyChecking=ask` once, then
+`yes`. Never bypass checks or blindly dismiss warnings.
 
-Terraform also exposes cached addresses:
+Terraform also has cached addresses:
 
 ```bash
 terraform -chdir=infra/aws-agent output -raw public_ip
 terraform -chdir=infra/aws-agent output -raw ssh_destination
 ```
 
-These reflect the last refresh. Prefer live lookup after stop/start; use current
-Terraform state after replacement, which also changes the instance ID.
+Prefer live lookup after stop/start. After replacement, use current Terraform
+state for the new instance ID.
 
-## Stop, start, and check the agent on EC2
+## Stop, start, and check the agent
 
-Use the host's control command:
+| Action | Command |
+| --- | --- |
+| Check runtime, timers, health, and budget | `sudo labctl status` |
+| Pause workers and stop both containers | `sudo labctl pause` |
+| Resume | `sudo labctl start` |
+| Restart | `sudo labctl restart` |
+| Investigate through chat | `sudo labctl chat` |
 
-| Action                                                 | Command               |
-| ------------------------------------------------------ | --------------------- |
-| Check runtime, timers, and health                      | `sudo labctl status`  |
-| Pause automatic investigation and stop both containers | `sudo labctl pause`   |
-| Resume the agent and collector                         | `sudo labctl start`   |
-| Restart the agent and collector                        | `sudo labctl restart` |
-| Chat with AWS investigation tools                      | `sudo labctl chat`    |
+`stop` aliases `pause`. Use `labctl` to coordinate services; pause choice,
+results, and login survive reboot. Status shows budget `used`, `remaining`,
+and `next_available_utc`.
 
-`stop` aliases `pause`. Use `labctl` to coordinate containers/collector; choices,
-results, and login survive reboots. `status` includes hourly budget `used`,
-`remaining`, and `next_available_utc`.
-
-Chat shares access rules with automation. Detection continues during
-chat; automatic claims wait without spending attempts.
-
-Pause leaves EC2 billed, health/backups active, and synthetic generation running
-until separately disabled. Intentional pause is healthy.
+Collection continues during chat; automatic investigations wait without spending
+attempts. Pause keeps health/backups active and does not stop hosting charges.
+It is a healthy state, but synthetic generation keeps running until you disable
+it separately.
 
 ## Investigate through chat
 
-On EC2, start the lab before `sudo labctl chat`. For example:
+On the runtime host, start the lab, then run `sudo labctl chat`. Try:
 
 > Find failed loads in the last two hours, inspect their S3 input and attempt
 > logs, and explain the failures with evidence.
 
-Optional launches, also on EC2:
+For a different window or an opening question, also on the runtime host:
 
 ```bash
 sudo labctl chat --minutes 15 --lookback-hours 6
 sudo labctl chat --query "Show my approved AWS resources."
 ```
 
-Follow-ups share budget. `/exit`, disconnect, or expiry ends access; history
-needs a newly authorized launch. `--profile lab` is the host access profile,
-not an AWS login. Direct SSH needs `ssh -t ... 'sudo labctl chat'`.
+Follow-ups share a budget. `/exit`, disconnect, or expiry ends access; continuing
+from history needs a new authorized launch. `--profile lab` selects host access,
+not an AWS login. Over SSH, allocate a terminal: `ssh -t ... 'sudo labctl chat'`.
 
 ## Pause or resume synthetic data generation
 
-On your workstation, edit the ignored `infra/aws-pipeline/terraform.tfvars`:
+On your local machine, edit ignored `infra/aws-pipeline/terraform.tfvars`:
 
 ```hcl
 pipeline_schedule_enabled = false # true to resume
@@ -115,15 +115,15 @@ terraform -chdir=infra/aws-pipeline apply pipeline.tfplan
 ```
 
 A schedule-only plan should change only Scheduler state; resolve other changes
-first. The example defaults to `false`; local inputs set the deployment value.
-Check live state in AWS, since Terraform outputs may be stale.
+first. The example defaults to `false`. Verify live state in AWS; cached Terraform
+outputs may be stale.
 
-## Read logs and results on EC2
+## Read logs and results
 
-For pipeline AWS commands, use the profile and region configured in
-`infra/aws-pipeline/terraform.tfvars`. Agent commands use the agent root's inputs.
+For the following AWS commands, use **your local machine** and the profile/region
+in `infra/aws-pipeline/terraform.tfvars`. Agent commands use the agent root's inputs.
 
-Follow producer uploads from your **workstation**:
+Follow producer uploads:
 
 ```bash
 aws logs tail /aws/lambda/hermes-lab-producer \
@@ -131,7 +131,7 @@ aws logs tail /aws/lambda/hermes-lab-producer \
   --since 10m --format short --follow
 ```
 
-Follow processor/SQS events from your **workstation** (`hermes-lab-loader`):
+Follow processor/SQS events (`hermes-lab-loader`):
 
 ```bash
 aws logs tail /aws/lambda/hermes-lab-loader \
@@ -139,11 +139,11 @@ aws logs tail /aws/lambda/hermes-lab-loader \
   --since 10m --format short --follow
 ```
 
-Ctrl-C stops following. Correlate UTC JSON logs by `run_id`, plus processor
-SQS/attempt IDs. Trace upload, receipt, loading, validation, writes, and completion.
-The final per-file `status` drives collector detection.
+Ctrl-C stops following. Correlate UTC JSON logs by `run_id`, then processor
+SQS/attempt IDs. Trace uploads through loading, validation, writes, and completion.
+The final per-file `status` drives detection.
 
-From the **workstation repository root**, inspect deployment identifiers:
+From the repository root on your local machine, get deployment identifiers:
 
 ```bash
 terraform -chdir=infra/aws-pipeline output -json pipeline
@@ -158,62 +158,81 @@ aws sqs get-queue-attributes --queue-url QUEUE_URL \
     ApproximateNumberOfMessagesNotVisible ApproximateNumberOfMessagesDelayed
 ```
 
-Counts are approximate; five receives send failures to the DLQ. Disabling the
-schedule stops new input, not queued processing. `labctl pause` stops neither.
+Counts are approximate; five receives send failed messages to the DLQ.
+Disabling generation leaves queued work processing. `labctl pause` stops neither.
 
-On **EC2**, inspect collector and health logs:
-
-Host stderr logs appear in the journal with UTC time, level, and module.
-CloudWatch pipeline logs are JSON with `level`/`logger`.
+On the **runtime host**, inspect worker and health logs:
 
 ```bash
 sudo journalctl -u hermes-lab-poller.service -n 50 --no-pager
+sudo journalctl -u hermes-lab-investigation.service -n 50 --no-pager
 sudo journalctl -u hermes-lab-health.service -n 20 --no-pager
 sudo systemctl list-timers 'hermes-lab-*' --all --no-pager
 ```
 
-Add `-f` to follow journal entries; Ctrl-C exits. View findings on EC2:
+Add `-f` to follow; Ctrl-C exits. Host journal entries use UTC time, level,
+and module; pipeline JSON logs retain `level`/`logger`.
+View findings:
 
 ```bash
 ls -lt /srv/hermes-lab/findings/reports/
 tail -n 5 /srv/hermes-lab/findings/incidents.jsonl
 ```
 
-| Path on EC2                                  | Contents                                          |
-| -------------------------------------------- | ------------------------------------------------- |
-| `/srv/hermes-lab/findings/incidents.sqlite3` | Saved incidents, collection progress, and attempt history |
-| `/srv/hermes-lab/findings/incidents.jsonl`   | Exported incidents and findings                   |
-| `/srv/hermes-lab/findings/reports/`          | Readable completed reports                        |
-| `/srv/hermes-lab/evidence/`                  | Collected evidence snapshots                      |
+| Path on the runtime host | Contents |
+| --- | --- |
+| `/srv/hermes-lab/findings/incidents.sqlite3` | Incidents, progress, attempts; authoritative database |
+| `/srv/hermes-lab/findings/incidents.jsonl` | Exported incidents/findings |
+| `/srv/hermes-lab/findings/reports/` | Completed reports |
+| `/srv/hermes-lab/evidence/` | Evidence snapshots |
 
-The poller ticks every 15 seconds after work finishes. Due sources use their
-YAML interval; backlog/errors retry next tick. Hermes runs only for eligible
-incidents within three attempts/rolling hour; excess incidents wait. A running
-container need not be making model calls. Emails contain completed agent
-investigations; CloudWatch health alarm emails are disabled.
+Each worker's timer ticks 15 seconds after it finishes. Sources follow their
+YAML cadence; backlog/errors retry next collection tick. `last-poll.json` tracks
+collection; `last-investigation.json` tracks investigations and budget.
+Hermes runs only for eligible incidents, up to three attempts per rolling hour.
+A running container may be idle. Emails contain completed investigations;
+CloudWatch health alarm emails are disabled.
+
+To pause investigations while collection continues, on the runtime host:
+
+```bash
+sudo systemctl stop hermes-lab-investigation.timer hermes-lab-investigation.service
+```
+
+Incidents stay queued. Resume with
+`sudo systemctl start hermes-lab-investigation.timer`. This pause ends at reboot;
+`labctl pause` persists for all workers. Health reports the stopped timer.
+
+To retry one pending incident, on the runtime host:
+
+```bash
+cd /srv/hermes-lab/code
+sudo -u ec2-user /usr/bin/python3.14 -m investigator.runtime.investigation_worker \
+  --config /etc/hermes-lab/executor.json --retry-incident INCIDENT_ID
+```
+
+This skips backoff only. Hourly/incident limits and live leases still apply.
+The collector CLI has no investigation or retry options.
 
 ## Agent report emails
 
-Configure the recipient with `alert_email` in your workstation's ignored
-`infra/aws-agent/terraform.tfvars`, then review and apply the Terraform plan and
-deploy the runtime using the [setup guide](SETUP.md). Confirm the SNS subscription
-email for a new recipient. The existing subscription is reused when unchanged.
+Set `alert_email` in your local machine's ignored agent `terraform.tfvars`,
+review/apply the plan, and [deploy](SETUP.md). Confirm a new SNS subscription
+by email; unchanged subscriptions are reused.
 
-On EC2, check delivery:
+On the runtime host, check delivery:
 
 ```bash
 sudo systemctl status hermes-lab-notifications.timer --no-pager
 sudo journalctl -u hermes-lab-notifications.service -n 20 --no-pager
 ```
 
-The first scan skips historical reports. Subsequent completed investigations
-are queued for email with their explanation, proposed action, uncertainty, and
-compact incident metadata. Delivery pauses with `labctl pause` and resumes with
-`labctl start`. Health monitoring continues locally and in CloudWatch, without
-health or recovery emails. A stopped or failing agent cannot author a new
-investigation report.
+The first scan skips historical reports. New completed investigations queue
+explanation, proposed action, uncertainty, and compact metadata. Delivery follows
+`labctl pause`/`start`. Health stays local/CloudWatch, without health or recovery
+emails. A stopped or failing agent cannot write a new investigation report.
 
-On EC2, you can send one previously historical report once:
+To send a historical report once, on the runtime host:
 
 ```bash
 cd /srv/hermes-lab/code
@@ -221,13 +240,13 @@ sudo -u ec2-user /usr/bin/python3.14 -m investigator.runtime.notifications \
   --send-incident INCIDENT_ID
 ```
 
-Sent reports are not requeued by this command. Delivery attempts and sanitized
-errors are saved in `/srv/hermes-lab/findings/notifications.sqlite3`; see
+Already-sent reports are not requeued. Attempts and sanitized errors go in
+`/srv/hermes-lab/findings/notifications.sqlite3`. See
 [delivery rules](ARCHITECTURE.md#health-and-storage) for retries and duplicates.
 
 ## Configure the collector
 
-On **EC2**, from `/srv/hermes-lab/code`, supply a definition:
+On the **runtime host**, from `/srv/hermes-lab/code`, supply a definition:
 
 ```bash
 sudo labctl start \
@@ -235,75 +254,73 @@ sudo labctl start \
 sudo labctl status
 ```
 
-The runtime validates against host policy, atomically installs at
+The runtime validates against host policy, atomically installs
 `/srv/hermes-lab/observations.yaml`, then starts services. Use an absolute path;
-`restart` also accepts `--observations`. Rejection preserves services/pause
-choice. Later starts/reboots reuse the installed copy. Region/group must match
-the allowlist; only initial default installation resolves deployment locations.
+`restart` also accepts `--observations`. Rejected definitions leave services and
+pause choice intact. Later starts/reboots reuse the installed copy. Region/group
+must match the allowlist; only initial defaults resolve deployment locations.
 
-`investigator/runtime/start.sh` forwards to `labctl start`; the poller passes
-the installed YAML to the host collector, outside the model container.
-
-Edit the installed YAML directly for subsequent changes:
+`investigator/runtime/start.sh` forwards to `labctl start`. The poller reads
+installed YAML outside the model container. For later edits on the runtime host:
 
 ```bash
 sudoedit /srv/hermes-lab/observations.yaml
-/srv/hermes-lab/collector-venv-py314/bin/python -m investigator.collector.poll \
+/srv/hermes-lab/collector-venv-py314/bin/python -m collector.poll \
   --config /etc/hermes-lab/executor.json \
   --observations /srv/hermes-lab/observations.yaml --validate-only
 ```
 
-Validation checks structure, location, and compilation without AWS/model calls.
-Valid edits load next invocation without timer changes. Shared instructions use
-`investigation.instructions`, with per-source overrides.
+Validation checks structure, location, and pattern compilation without AWS/model
+calls. Valid edits load next invocation. Use `investigation.instructions` for
+shared prompts, with per-source overrides.
 
-Replay one text block on EC2 below, or use the workstation venv with
+Preview one text block on the runtime host, or use your local machine's venv with
 `requirements.txt` and local paths:
 
 ```bash
-/srv/hermes-lab/collector-venv-py314/bin/python -m investigator.collector.preview \
+/srv/hermes-lab/collector-venv-py314/bin/python -m collector.preview \
   --observations /srv/hermes-lab/observations.yaml \
   --source processor_logs --text /tmp/example-log-block.txt
 ```
 
-Preview returns rules, severities, and character spans without AWS/model calls.
-Each input file is one block.
+Each file is one block. Preview returns rules, severities, and character spans
+without AWS/model calls.
 
 `/srv/hermes-lab/findings/last-poll.json` reports source status, cursor, next poll,
-sanitized error, pages/events/bytes, and lag. SQLite retains originals/revisions;
-`collection-audit.jsonl` in the same directory holds the host audit. Rule edits
-may replay history without reopening completed incidents or resetting attempts.
-Keep all findings/state private.
+sanitized errors, volume, and lag. SQLite keeps originals/revisions;
+`collection-audit.jsonl` holds the host audit. Rule edits may replay history
+without reopening completed incidents or resetting attempts. Keep findings
+and saved state private.
 
 ## Restart collection from a new point
 
-For a fresh experiment, run **on EC2**:
+For a fresh experiment, **on the runtime host**:
 
 ```bash
 sudo labctl reset-collector --since now
 ```
 
-Reset archives findings, reports, and queue under
-`/srv/hermes-lab/checkpoints/collector-reset-*/` and reports the path. The fresh
-queue uses installed YAML; attempts/budgets, authentication, and pause choice
-remain intact. A running lab resumes.
+Reset reports its archive path under
+`/srv/hermes-lab/checkpoints/collector-reset-*/`. It archives findings, reports,
+and queue while retaining attempts/budgets, login, and pause choice. A running
+lab resumes with installed YAML.
 
-To install an edited YAML and read the last fifteen minutes instead:
+To install edited YAML and read the last fifteen minutes:
 
 ```bash
 sudo labctl reset-collector --since 15m \
   --observations /srv/hermes-lab/code/investigator/runtime/observations.yaml
 ```
 
-`--since` defaults to `now`, or accepts `s`/`m`/`h` up to `24h`. Its boundary
-survives restarts and limits overlap. YAML validates before services stop.
-Finish active investigations or pause first. Do not delete lock files; they
-coordinate processes, not reading positions. Ordinary edits need no reset.
+`--since` defaults to `now`; it also accepts `s`/`m`/`h` up to `24h`. The saved
+boundary survives restarts and limits overlap. YAML validates before services
+stop. Finish active investigations or pause first. Never delete lock files;
+ordinary edits need no reset.
 
-## Stop or start the EC2 host
+## Stop or start an EC2 instance
 
-Disable generation to avoid new backlog, then `sudo labctl pause` on EC2.
-On the workstation, in the shell holding `$lab_instance_id`:
+Disable generation to avoid new backlog, then run `sudo labctl pause` on the
+runtime host. On your local machine, in the shell holding `$lab_instance_id`:
 
 ```bash
 aws ec2 stop-instances --profile YOUR_PROFILE --region us-east-1 \
@@ -321,10 +338,9 @@ aws ec2 wait instance-status-ok --profile YOUR_PROFILE --region us-east-1 \
   --instance-ids "$lab_instance_id"
 ```
 
-Repeat live IP lookup/SSH, then `sudo labctl start` and `sudo labctl status` if
-previously paused. Resume generation separately.
+Repeat live IP lookup and SSH, then `sudo labctl start` and `sudo labctl status`
+if paused. Resume generation separately.
 
-Stopped EC2 retains billable storage/resources and cannot send health heartbeats
-or agent reports. CloudWatch alarm actions remain disabled. Stop/start preserves
-disk, while
+A stopped instance keeps billable storage/resources and cannot send heartbeats or
+reports. CloudWatch alarm actions stay disabled. Stop/start preserves disk;
 termination, replacement, or `terraform destroy` may delete it.

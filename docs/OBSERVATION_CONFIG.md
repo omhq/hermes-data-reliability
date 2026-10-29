@@ -1,12 +1,12 @@
 # CloudWatch observation configuration
 
-YAML chooses CloudWatch sources, polling times, and match rules. Pipelines need
+Choose sources, polling times, and match rules in YAML. Your pipeline needs
 no code or log-format changes.
 
 ## Definition
 
-The default YAML is installed at `/srv/hermes-lab/observations.yaml`.
-Later deployments preserve your changes.
+The installed file is `/srv/hermes-lab/observations.yaml`. Later deployments
+preserve your edits. Here's a small example:
 
 ```yaml
 version: 1
@@ -41,11 +41,10 @@ sources:
             - regex: '(?i)connection[^\n]*timed out'
 ```
 
-Each source names a log group, polling settings, and rules. Each rule has
-`severity` (`critical`, `error`, or `warning`) and `match`.
-
-Sources must match the host allowlist, currently one processor log group.
-YAML grants no permissions, credentials, command execution, or higher limits.
+Each source sets a log group, polling settings, and rules. Rules need `match`
+and a severity: `critical`, `error`, or `warning`. Sources must match the host
+allowlist, currently one processor group. YAML grants no permissions,
+credentials, command execution, or higher limits.
 
 ## Matching
 
@@ -54,85 +53,83 @@ YAML grants no permissions, credentials, command execution, or higher limits.
 | `contains` | Case-sensitive text search |
 | `regex` | Python `re.search`; `(?i)` ignores case |
 | `any` | Stop at the first matching child |
-| `all` | Every child must match the same message |
+| `all` | Every child matches the same message |
 
-Each message is one block; separate events are never joined. Use single quotes
-for regex backslashes and `(?s)` for `.` to match newlines. Spans use character
-offsets in the original message.
+One message is one block; events are never joined. Single-quote regexes to
+preserve backslashes. Use `(?s)` if `.` should match newlines. Match spans are
+character offsets in the original message.
 
-Matching runs in a separate worker, limited to three seconds per request and
-256 MiB address space on Linux. Timeout, failure, or oversized input retains
-unread work and reports an error, never “no match.”
+A separate worker gets three seconds/request and 256 MiB address space on Linux.
+Timeouts, failures, and oversized inputs retain unread work and report an error,
+never “no match.”
 
 ## Collection and coverage
 
-Collection reads every available event in the selected range, without filtering
-or random sampling.
+Read all available events in the selected range, without filtering or sampling.
 
 | Setting | Meaning | Allowed values |
 | --- | --- | --- |
-| `mode` | Read new events and resume saved progress | `incremental` |
+| `mode` | Read new events; resume saved progress | `incremental` |
 | `poll_interval` | Minimum time between source polls | `15s`–`1h` |
 | `initial_lookback` | Starting range for a new source/rule revision | `1s`–`24h` |
-| `overlap` | Revisit time before the completed cursor for late events | `0s`–`1h` |
+| `overlap` | Revisit before the completed cursor for late events | `0s`–`1h` |
 
 Use integer seconds (`s`), minutes (`m`), or hours (`h`).
 
 - A 15-second timer checks due sources; active work may delay it.
-- Each invocation reads at most five 100-event pages in 60 seconds, using
-  windows up to two hours.
-- Matches and progress save together. Partial reads resume after restart;
-  failures retry the range from its beginning. Rereads are deduplicated.
-- Backlog/errors retry next tick. Initial lookback does not cap catch-up.
-  Empty pages with continuation tokens still require more reads.
+- Each invocation reads up to five 100-event pages in 60 seconds, in windows
+  of at most two hours. Initial lookback does not cap catch-up.
+- Matches/progress save together. Partial reads resume after restart;
+  failures retry from the range's beginning. Rereads are deduplicated.
+- Backlog/errors retry next tick. Empty pages with continuation tokens still
+  need further reads.
 
-Heartbeats report progress, errors, volume, and lag, including overlap rereads;
-counts are not billing estimates. `ready` means collection caught up, not that
-the pipeline is healthy. Expired logs, events arriving outside overlap, and
-logs never emitted may be missed.
+Heartbeats show progress, errors, volume, and lag, including overlap rereads.
+Counts are not billing estimates. `ready` means collection caught up; it says
+nothing about pipeline health. Expired logs, arrivals outside overlap, and
+unwritten logs may be missed.
 
 ### Size limits
 
 | Item | Limit |
 | --- | --- |
-| YAML | 64 KiB; four sources; 64 rules per source |
-| Match expression | 1,024 characters per literal/regex; 128 conditions per rule |
-| Messages | 256 KiB each; 2 MiB text per evaluation batch |
+| YAML | 64 KiB; four sources; 64 rules/source |
+| Match expression | 1,024 characters/literal or regex; 128 conditions/rule |
+| Messages | 256 KiB each; 2 MiB text/evaluation batch |
 
 Duplicate locations are rejected. Limits cause delays/errors, never sampling.
 
 ## Incidents and investigation
 
-One event creates one incident at its highest matching severity. Severity changes
-neither queue priority nor budgets.
+One event creates one incident at its highest matching severity. Severity
+changes neither queue priority nor budgets.
 
-Lab `run` incidents use the 24-character run ID and scoped S3/log tools. Other
-messages get stable `log-…` IDs from account, source, and event, with log searches
+Lab `run` incidents use a 24-character run ID and scoped S3/log tools. Other
+messages get stable `log-…` IDs from account, source, and event, with searches
 limited to ±5 minutes. Report `run_id` identifies either kind.
 
-Required shared defaults are `investigation.objective` and
-`investigation.instructions`; sources may override either. There is no prompt
-fallback. Limits: objective 4,000 characters/8 KiB serialized UTF-8; instructions
-8,000 characters/16 KiB.
+Shared `investigation.objective` and `investigation.instructions` are required;
+sources may override either. There is no prompt fallback. The objective limit
+is 4,000 characters/8 KiB serialized UTF-8; instructions get 8,000 characters/16 KiB.
 
-Host code checks access, report shape, budgets, and current-session evidence
-receipts. Prompt excerpts are not receipts; logs cannot override instructions.
+Host code checks access, report shape, budgets, and current-session receipts.
+Prompt excerpts are not receipts; logs cannot override instructions.
 
-Incidents are investigated in arrival order, with three attempts per rolling
-hour, three per incident, and ten-minute retry backoff. Each invocation starts
-at most one investigation. Failed attempts count. Chat pauses investigations
-while collection continues.
+A separate SQLite worker claims one incident per invocation, in arrival order:
+three attempts/rolling hour, three/incident, ten-minute backoff. Failed and
+interrupted attempts count; expired claims recover after ten minutes.
+Chat delays investigations while collection continues.
 
 ## State and format
 
-SQLite retains progress, original events, definitions, findings, and attempts,
-without automatic retention. Provider timestamps set scope; log-text timestamps
-remain untrusted.
+SQLite keeps progress, originals, definitions, findings, and attempts without
+automatic retention. Provider timestamps set scope; log-text timestamps are untrusted.
 
-- Source or rule changes start bounded replay, retaining old progress and incidents.
-- Polling or overlap edits keep progress. Prompt edits affect only new incidents.
-- Attempts persist, completed incidents stay closed, and saved incidents cannot
-  move between accounts. Each investigation rechecks authorization.
+- Source/rule changes start bounded replay, keeping old progress and incidents.
+- Cadence/overlap edits keep progress. Prompt edits affect new incidents only.
+- Attempts persist and completed incidents stay closed. Incidents cannot move
+  between accounts. Every investigation rechecks authorization.
 
-An unsupported database format stops installation before services stop,
-rollback needs compatible code and state.
+Unsupported database formats stop installation before services stop. Rollback
+needs compatible code and state. For editing/preview commands, see
+[Operations](OPERATIONS.md#configure-the-collector).
