@@ -3,10 +3,11 @@
 ![Hermes overview: pipeline signals, independent investigation, findings, chat, and configured actions](docs/assets/hermes-architecture.svg)
 
 Reproduce failed data loads in AWS and investigate them with Hermes Agent.
-You configure log sources and match rules in YAML. A host collector detects
-incidents into SQLite. Hermes follows the evidence with scoped AWS tools to
-explain what failed, propose a fix, or perform automatic remediation you
-define in YAML within granted permissions.
+You configure log sources, match rules, and delivery expectations in YAML.
+One collector saves shared evidence. Independent consumers apply log rules
+and scheduled expectations, then save incidents for Hermes to investigate.
+Hermes follows the evidence with scoped read-only tools, explains what it can
+establish, and proposes a next step for you to review.
 
 ## Quick start
 
@@ -29,9 +30,11 @@ has a [separate control](docs/OPERATIONS.md#pause-or-resume-synthetic-data-gener
 - [Observation configuration](docs/OBSERVATION_CONFIG.md) — log sources, match rules, and prompts.
 - [AWS access and tools](docs/ACCESS.md) — authorization and evidence boundaries.
 - [Tool boundary package](tool_boundary/README.md) — access checks and limits for agent tool calls.
-- [Collector package](collector/README.md) — independent log collection and detection.
+- [Collector package](collector/README.md) — shared source collection.
+- [Observation store](observations/README.md) — saved events and collection coverage.
+- [Log-rule consumer](investigator/consumers/log_rules/README.md) — detection from saved logs.
 - [Incident storage package](incidents/README.md) — durable queue and attempt accounting.
-- [Recovery](docs/RECOVERY.md) — backups, restore, and upgrades.
+- [Recovery](docs/RECOVERY.md) — backups, restore, and runtime image changes.
 - [Evaluations](docs/EVALUATION.md) — reproducible scenarios and verification.
 
 ## Development
@@ -50,7 +53,7 @@ With the virtual environment active, run the checks from the repository root:
 python -m ruff format --check .
 python -m ruff check .
 python -m compileall -q \
-  collector incidents tool_boundary investigator pipeline evals tests
+  observations collector incidents tool_boundary investigator pipeline evals tests
 git diff --check
 ```
 

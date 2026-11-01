@@ -24,6 +24,7 @@ from .notification_store import (
 from .notification_store import (
     validate_schema as validate_notifications,
 )
+from .observation_configurations import CONFIGURATIONS
 
 ROOT = Path("/srv/hermes-lab")
 OPS = ROOT / "ops"
@@ -119,10 +120,11 @@ def status() -> None:
         {
             "mode": "running" if (OPS / "enabled").exists() else "paused",
             "runtime": state,
-            "observations": str(ROOT / "observations.yaml"),
-            "log_rules": str(ROOT / "log-rules.yaml"),
+            **{
+                entry.identifier: str(ROOT / entry.yaml_filename)
+                for entry in CONFIGURATIONS.entries
+            },
             "observation_database": str(observation_state.STORE),
-            "pipeline_health": str(ROOT / "pipeline-health.yaml"),
             "investigation_budget": budget,
         },
         indent=2,

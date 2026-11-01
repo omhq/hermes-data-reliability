@@ -6,11 +6,11 @@ from typing import Any
 
 from investigator.logging_config import configure_logging
 from observations.configuration import InvalidConfiguration
+from observations.configurations.base import ConfigurationGraph
 from observations.files import install_bytes
-from observations.yaml import load_yaml
 
-from .collection import with_collection
-from .definition import InvalidDefinition, bind, parse
+from .configuration import PipelineHealthConfiguration
+from .validation import InvalidDefinition
 
 LOGGER = logging.getLogger(__name__)
 
@@ -25,19 +25,19 @@ def install(
     payload = source.read_bytes()
 
     try:
-        definition = load_yaml(source)
-        parsed = parse(definition)
+        configuration = PipelineHealthConfiguration.load(source, approved)
+        consumer = configuration.parsed.consumer
+
         if collection_plan is None:
             collection_plan = {
-                "consumers": {parsed.consumer.identifier: {}},
-                "consumer_revisions": {
-                    parsed.consumer.identifier: parsed.consumer.revision
-                },
+                "consumers": {consumer.identifier: {}},
+                "consumer_revisions": {consumer.identifier: consumer.revision},
                 "feeds": {},
             }
 
-        bound = with_collection(approved, parsed, collection_plan)
-        bind(parsed, bound)
+        graph = ConfigurationGraph(approved, {}, collection_plan)
+        configuration.validate_graph(graph)
+        definition = configuration.compile(graph)
     except InvalidConfiguration:
         raise InvalidDefinition("Invalid pipeline-health YAML") from None
 

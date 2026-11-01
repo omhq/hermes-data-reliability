@@ -33,7 +33,7 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
         root / "investigator/runtime/hermes-lab-executor.service",
     ]
     paths.extend((root / "investigator/capabilities").rglob("*.py"))
-    paths.extend((root / "observations").glob("*.py"))
+    paths.extend((root / "observations").rglob("*.py"))
 
     with tarfile.open(fileobj=output, mode="w") as archive:
         for path in sorted(paths):

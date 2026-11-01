@@ -246,51 +246,125 @@ Already-sent reports are not requeued. Attempts and sanitized errors go in
 
 ## Configure the collector
 
-On the **runtime host**, from `/srv/hermes-lab/code`, supply a definition:
-
-```bash
-sudo labctl start \
-  --observations /srv/hermes-lab/code/investigator/runtime/observations.yaml
-sudo labctl status
-```
-
-The runtime validates against host policy, atomically installs
-`/srv/hermes-lab/observations.yaml`, then starts services. Use an absolute path;
-`restart` also accepts `--observations`. Rejected definitions leave services and
-pause choice intact. Later starts/reboots reuse the installed copy. Region/group
-must match the allowlist; only initial defaults resolve deployment locations.
-
-`investigator/runtime/start.sh` forwards to `labctl start`. The poller reads
-installed YAML outside the model container. For later edits on the runtime host:
+On the **runtime host**, edit the source catalog and consumer definitions:
 
 ```bash
 sudoedit /srv/hermes-lab/observations.yaml
-/srv/hermes-lab/collector-venv-py314/bin/python -m collector.poll \
-  --config /etc/hermes-lab/executor.json \
-  --observations /srv/hermes-lab/observations.yaml --validate-only
+sudoedit /srv/hermes-lab/log-rules.yaml
 ```
 
-Validation checks structure, location, and pattern compilation without AWS/model
-calls. Valid edits load next invocation. Use `investigation.instructions` for
-shared prompts, with per-source overrides.
-
-Preview one text block on the runtime host, or use your local machine's venv with
-`requirements.txt` and local paths:
+The catalog names approved feeds; log rules and pipeline health each own their
+subscriptions. See [configuration and coverage](OBSERVATION_CONFIG.md). Finish
+an active investigation or chat, then validate and activate the whole graph:
 
 ```bash
-/srv/hermes-lab/collector-venv-py314/bin/python -m collector.preview \
-  --observations /srv/hermes-lab/observations.yaml \
+sudo labctl restart
+sudo labctl status
+```
+
+Restart validates YAML, host scope, subscriptions, and regex compilation before
+stopping services. Rejected definitions leave active compiled configuration and
+pause choice intact. Restart revokes sessions. Initial installation resolves
+the template's deployed location; later starts preserve your installed YAML.
+`--observations /absolute/path/catalog.yaml` selects a replacement catalog.
+
+Preview one text block on the runtime host, or use your local machine's venv and
+local paths:
+
+```bash
+/srv/hermes-lab/collector-venv-py314/bin/python \
+  -m investigator.consumers.log_rules.preview \
+  --definition /srv/hermes-lab/log-rules.yaml \
   --source processor_logs --text /tmp/example-log-block.txt
 ```
 
-Each file is one block. Preview returns rules, severities, and character spans
-without AWS/model calls.
+Preview returns matches and character spans without AWS or model calls.
+`findings/last-poll.json` reports source progress and collection errors;
+`findings/last-log-rules.json` reports consumer progress. Collection audit is
+`findings/collection-audit.jsonl`. Raw shared evidence and coverage are in
+`/var/lib/hermes-lab-observations/observations.sqlite3`, outside the agent.
+Rules replay saved evidence when their revision changes. Keep saved state private.
 
-`/srv/hermes-lab/findings/last-poll.json` reports source status, cursor, next poll,
-sanitized errors, volume, and lag. SQLite keeps originals/revisions;
-`collection-audit.jsonl` holds the host audit. Rule edits may replay history
-without reopening completed incidents or resetting attempts. Keep findings
-and saved state private.
+## Configure delivery expectations
+
+On the **runtime host**, edit pipeline expectations and their investigation
+context, then activate the same shared configuration graph:
+
+```bash
+sudoedit /srv/hermes-lab/pipeline-health.yaml
+sudo labctl restart
+cat /srv/hermes-lab/findings/last-pipeline-health.json
+```
+
+Use `consumer.enabled` to control this consumer and subscriptions to request
+shared evidence. S3-only checks need no log subscription. See
+[expectation syntax](OBSERVATION_CONFIG.md#pipeline-delivery-expectations).
+Restart validates and compiles all three files before activating services;
+there is no AWS or model call during configuration. Finish active chat or
+investigation first, because restart revokes sessions.
+
+The scheduler stops with `labctl pause`. Disabled consumers perform no checks
+and add no collection requirements. The pipeline-health tool package must also
+be enabled for scheduled pipelines. Chat uses the same configured checks;
+private check history is in
+`/var/lib/hermes-lab-executor/pipeline-health.sqlite3`.
+
+### Configure the existing lab
+
+The lab needs no producer or processor changes. Its output key is
+`output/<sha256-of-literal-scheduled_at-first-24-hex>.json`. Verify the actual
+scheduled timestamp representation and interval phase before enabling checks.
+An AWS rate schedule without an explicit start date does not establish a
+minute-boundary anchor. AWS documents the
+[scheduled-time context attribute](https://docs.aws.amazon.com/scheduler/latest/UserGuide/managing-schedule-context-attributes.html)
+and [rate schedule start behavior](https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html).
+
+On **your local machine**, from the repository root, save current pipeline
+outputs in your ignored local directory:
+
+```bash
+mkdir -p .local
+terraform -chdir=infra/aws-pipeline output -json pipeline > .local/pipeline.json
+```
+
+After reviewing/applying the pipeline Terraform output changes, use the returned
+producer log group and region to retrieve two consecutive scheduled invocations.
+Use your intended AWS profile and verified account; `START_TIME_MS` should select
+recent runs from the current schedule:
+
+```bash
+aws logs filter-log-events --log-group-name PRODUCER_LOG_GROUP \
+  --filter-pattern '{ $.event = "invocation_received" }' \
+  --start-time START_TIME_MS --limit 2 --no-paginate \
+  --profile YOUR_PROFILE --region YOUR_REGION > .local/producer-records.json
+```
+
+Create your YAML using the
+[minute-based example](OBSERVATION_CONFIG.md#minute-based-lab-example).
+Set the interval from `schedule_expression`, and use two consecutive producer
+records to verify its phase. The example's `anchor` is illustrative: replace it
+with a recorded UTC occurrence, retaining its seconds. Use `utc_seconds` for
+literal timestamps ending in `Z`, or `utc_milliseconds` for `.000Z`.
+
+Check each recorded `run_id` against the first 24 hexadecimal characters of the
+SHA-256 digest of its exact `scheduled_at` text. On **your local machine**:
+
+```bash
+printf '%s' 'RECORDED_SCHEDULED_AT' | shasum -a 256
+```
+
+Do not round the timestamp or add a newline before hashing. Confirm that the
+records are one minute apart for `every: 1m`. Set grace, supporting sources,
+and investigation instructions to your expectations. Configuration validation
+checks supported syntax and approved resources; it cannot verify that a naming
+convention matches your live producer.
+
+Copy that YAML privately to the runtime host, then use the configuration command
+above with `--source /path/to/pipeline-health.yaml`. Review/apply the agent plan
+and deploy current source first: trusted resource profiles come from its outputs.
+The anchor begins automatic coverage at the first verified occurrence. If the
+schedule is recreated or its timestamp format changes, update the definition
+from current records. A changed convention must not be diagnosed as missing data.
 
 ## Restart collection from a new point
 
@@ -302,14 +376,15 @@ sudo labctl reset-collector --since now
 
 Reset reports its archive path under
 `/srv/hermes-lab/checkpoints/collector-reset-*/`. It archives findings, reports,
-and queue while retaining attempts/budgets, login, and pause choice. A running
+queue, and shared observation database while retaining attempts/budgets, login,
+and pause choice. A running
 lab resumes with installed YAML.
 
 To install edited YAML and read the last fifteen minutes:
 
 ```bash
 sudo labctl reset-collector --since 15m \
-  --observations /srv/hermes-lab/code/investigator/runtime/observations.yaml
+  --observations /srv/hermes-lab/observations.yaml
 ```
 
 `--since` defaults to `now`; it also accepts `s`/`m`/`h` up to `24h`. The saved

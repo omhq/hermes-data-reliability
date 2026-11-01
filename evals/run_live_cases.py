@@ -37,7 +37,9 @@ def run_case(
     case: dict[str, Any],
     *,
     config: Path,
-    observations: Path,
+    collection_plan: Path,
+    log_rules: Path,
+    observation_store: Path,
     findings: Path,
     code: Path,
     collector_python: Path = COLLECTOR_PYTHON,
@@ -53,28 +55,48 @@ def run_case(
 
     for _ in range(MAX_POLLS):
         if not row:
-            result = subprocess.run(
+            commands = (
                 [
                     str(collector_python),
                     "-m",
                     "collector.poll",
                     "--config",
                     str(config),
-                    "--observations",
-                    str(observations),
+                    "--plan",
+                    str(collection_plan),
+                    "--store",
+                    str(observation_store),
                     "--findings",
                     str(findings),
                 ],
-                cwd=code,
-                capture_output=True,
-                text=True,
-                timeout=90,
+                [
+                    str(collector_python),
+                    "-m",
+                    "investigator.consumers.log_rules.cli",
+                    "--definition",
+                    str(log_rules),
+                    "--plan",
+                    str(collection_plan),
+                    "--store",
+                    str(observation_store),
+                    "--findings",
+                    str(findings),
+                ],
             )
 
-            if result.returncode:
-                raise RuntimeError(
-                    "Collector command failed; inspect its host status"
+            for command in commands:
+                result = subprocess.run(
+                    command,
+                    cwd=code,
+                    capture_output=True,
+                    text=True,
+                    timeout=90,
                 )
+
+                if result.returncode:
+                    raise RuntimeError(
+                        "Collection or consumption failed; inspect host status"
+                    )
 
             row = read_incident(findings, run_id)
 
@@ -140,9 +162,19 @@ def main() -> None:
         "--config", type=Path, default=Path("/etc/hermes-lab/executor.json")
     )
     parser.add_argument(
-        "--observations",
+        "--plan",
         type=Path,
-        default=Path("/srv/hermes-lab/observations.yaml"),
+        default=Path("/etc/hermes-lab/collection.json"),
+    )
+    parser.add_argument(
+        "--log-rules",
+        type=Path,
+        default=Path("/etc/hermes-lab/log-rules.json"),
+    )
+    parser.add_argument(
+        "--store",
+        type=Path,
+        default=Path("/var/lib/hermes-lab-observations/observations.sqlite3"),
     )
     parser.add_argument(
         "--collector-python", type=Path, default=COLLECTOR_PYTHON
@@ -164,7 +196,9 @@ def main() -> None:
         result = run_case(
             case,
             config=args.config,
-            observations=args.observations,
+            collection_plan=args.plan,
+            log_rules=args.log_rules,
+            observation_store=args.store,
             findings=args.findings,
             code=args.code,
             collector_python=args.collector_python,

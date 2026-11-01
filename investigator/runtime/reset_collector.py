@@ -20,11 +20,13 @@ from investigator.logging_config import configure_logging
 from investigator.runtime.reports import export
 from observations import store
 from observations.configuration import duration
+from observations.configurations.registry import ConfigurationRegistry
 
 from . import control
 from .configure_observations import configure
 from .locking import investigation_lock
 from .notification_store import LOCK_NAME, PRESERVED_FILES
+from .observation_configurations import CONFIGURATIONS
 from .sessions import SessionUnavailable
 
 ROOT = Path("/srv/hermes-lab")
@@ -36,6 +38,7 @@ LOCK_FILES = {
     LOCK_NAME,
 }
 OBSERVATIONS = Path("/var/lib/hermes-lab-observations/observations.sqlite3")
+COMPILED = Path("/etc/hermes-lab")
 LOGGER = logging.getLogger(__name__)
 
 
@@ -127,7 +130,12 @@ def poll_lock(findings: Path) -> Generator[None]:
 
 
 def replace_findings(
-    root: Path, stage: Path, since_ms: int, was_running: bool
+    root: Path,
+    stage: Path,
+    since_ms: int,
+    was_running: bool,
+    *,
+    registry: ConfigurationRegistry = CONFIGURATIONS,
 ) -> Path:
     """Archive findings and roll back failed replacements."""
     findings = root / "findings"
@@ -140,7 +148,7 @@ def replace_findings(
     saved.mkdir(mode=0o700)
 
     for source in (
-        root / "observations.yaml",
+        *(root / filename for filename in registry.yaml_filenames),
         root / "ops/investigator.runtime.json",
     ):
         if source.exists():
@@ -158,14 +166,8 @@ def replace_findings(
     compiled_archive = archive / "compiled"
     compiled_archive.mkdir()
 
-    for filename in (
-        "collection.json",
-        "log-rules.json",
-        "pipeline-health.json",
-    ):
-        shutil.copy2(
-            Path("/etc/hermes-lab") / filename, compiled_archive / filename
-        )
+    for filename in registry.compiled_filenames:
+        shutil.copy2(COMPILED / filename, compiled_archive / filename)
 
     if OBSERVATIONS.exists():
         shutil.copy2(OBSERVATIONS, archive / "observations.sqlite3")
@@ -183,23 +185,26 @@ def replace_findings(
             path.rename(findings / path.name)
             installed.append(path.name)
 
-        (stage / "observations.yaml").replace(root / "observations.yaml")
+        for filename in registry.yaml_filenames:
+            (stage / filename).replace(root / filename)
+
         (stage / "observations.sqlite3").replace(OBSERVATIONS)
         os.chown(OBSERVATIONS, 1000, OBSERVATIONS.parent.stat().st_gid)
         OBSERVATIONS.chmod(0o640)
 
-        for path in (stage / "compiled").iterdir():
-            path.replace(Path("/etc/hermes-lab") / path.name)
+        for filename in registry.compiled_filenames:
+            (stage / "compiled" / filename).replace(COMPILED / filename)
     except BaseException:
         if (archive / "observations.sqlite3").exists():
             shutil.copy2(archive / "observations.sqlite3", OBSERVATIONS)
             os.chown(OBSERVATIONS, 1000, OBSERVATIONS.parent.stat().st_gid)
             OBSERVATIONS.chmod(0o640)
 
-        shutil.copy2(archive / "observations.yaml", root / "observations.yaml")
+        for filename in registry.yaml_filenames:
+            shutil.copy2(archive / filename, root / filename)
 
         for path in compiled_archive.iterdir():
-            shutil.copy2(path, Path("/etc/hermes-lab") / path.name)
+            shutil.copy2(path, COMPILED / path.name)
 
         for name in installed:
             (findings / name).rename(stage / "findings" / name)
@@ -213,7 +218,10 @@ def replace_findings(
 
 
 def reset_collector(
-    since: str = "now", observations: Path | None = None
+    since: str = "now",
+    observations: Path | None = None,
+    *,
+    registry: ConfigurationRegistry = CONFIGURATIONS,
 ) -> Path:
     """Validate before pausing and retain authentication and running intent."""
     since_ms = start_time(since, int(time.time() * 1000))
@@ -223,11 +231,7 @@ def reset_collector(
         prefix=".collector-reset-", dir=ROOT
     ) as temporary:
         stage = Path(temporary)
-        for filename in (
-            "observations.yaml",
-            "log-rules.yaml",
-            "pipeline-health.yaml",
-        ):
+        for filename in registry.yaml_filenames:
             shutil.copy2(ROOT / filename, stage / filename)
 
         definition = configure(
@@ -236,6 +240,7 @@ def reset_collector(
             approved,
             stage / "compiled",
             catalog_source=observations,
+            registry=registry,
         )
         findings = ROOT / "findings"
 
@@ -271,7 +276,11 @@ def reset_collector(
 
                     with poll_lock(findings):
                         archive = replace_findings(
-                            ROOT, stage, since_ms, was_running
+                            ROOT,
+                            stage,
+                            since_ms,
+                            was_running,
+                            registry=registry,
                         )
             finally:
                 if was_running:

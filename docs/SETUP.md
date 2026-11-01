@@ -57,7 +57,31 @@ Configure the agent:
 | `ami_id` | Reviewed Amazon Linux 2023 x86_64 image |
 | `evidence_bucket_name` | Authorized existing bucket |
 | `evidence_log_group` | Authorized existing log group |
+| `sqs_queue_arns` | Optional exact queue ARNs for `hermes-sqs` |
+| `lambda_function_arns` | Optional unqualified function ARNs for `hermes-lambda` |
+| `lambda_event_source_mappings` | Optional UUID-to-function/queue bindings for mapping reads |
 | `alert_email` | Optional report recipient |
+
+For the optional SQS and Lambda packages, copy queue/function ARNs and mapping
+UUIDs from the pipeline Terraform output into your ignored agent
+`terraform.tfvars`. The output includes `queue_arn`, `dead_letter_arn`,
+`function_arn`, `producer_function_arn`, and `event_source_mapping_id`.
+Approve only the resources you want investigated. A mapping entry has this shape
+(replace every placeholder with the corresponding output):
+
+```hcl
+lambda_event_source_mappings = {
+  "MAPPING_UUID" = {
+    function_arn = "APPROVED_FUNCTION_ARN"
+    queue_arn    = "APPROVED_QUEUE_ARN"
+  }
+}
+```
+
+Enable `hermes-sqs` and/or `hermes-lambda` in the agent YAML, then review the
+agent Terraform plan and deploy through the existing workflow. The plan grants
+only the selected metadata reads. Each enabled package requires its explicit
+resource allowlist; an empty mapping allowlist disables mapping reads.
 
 Agent provisioning needs EC2/VPC, IAM, CloudWatch, SNS, Backup, KMS, and
 `iam:PassRole`. Keep keys/SSO tokens outside Terraform. Gateway/dashboard
@@ -79,6 +103,16 @@ terraform -chdir=infra/aws-agent apply agent.tfplan
 ```
 
 ## Deploy the runtime
+
+The pipeline-health capability is enabled in the agent tool configuration.
+Full deployment installs its host implementation, Hermes adapter, investigation
+skill, and scheduled runner. Its initial YAML has no expectations; configure
+the delivery schedule and output convention using the
+[operations guide](OPERATIONS.md#configure-delivery-expectations).
+
+Installation accepts only the current database and configuration formats.
+For breaking changes, discard the affected lab data and recreate it with the
+current release. See [fresh lab state](RECOVERY.md#breaking-format-changes).
 
 Choose [tool packages](ACCESS.md#tool-packages) in
 `investigator/runtime/config.yaml` before planning the agent root. Deployment
@@ -117,19 +151,33 @@ source is staged only. Activation:
 
 - Pulls the pinned image (15-minute limit) and verifies Python (30-second probe).
 - Builds tools, checkpoints state, and installs the executor and separate timers.
+- Generates a read-only package manifest for model-side YAML toolset selection.
 - Preserves pause choice, authentication, and findings.
-- Requires incident schema 2; incompatible formats stop activation before
-  services stop, without migration or reset.
+- Rejects unsupported incident and notification database formats before
+  services stop. Recreate affected lab state before activation.
 
-The release includes `collector`, `incidents`, `investigator`, and `tool_boundary`.
+The release includes `observations`, `collector`, `incidents`, `investigator` (including its
+capabilities), and `tool_boundary`.
 Investigation uses host Python 3.14 and the standard library.
 Collection runs `python -m collector.poll` in
-`/srv/hermes-lab/collector-venv-py314`, with pinned PyYAML and bounded pattern checks.
+`/srv/hermes-lab/collector-venv-py314`, with pinned PyYAML. Separate log-rule consumption runs in the same environment.
 Its independent allowlist is `/etc/hermes-lab/executor.json`.
 
-First installation explicitly supplies `investigator/runtime/observations.yaml`.
-Later activations preserve and validate your installed YAML, including required
-investigation defaults. Both workers share persistent `findings/incidents.sqlite3`.
+First installation supplies the source catalog, log-rule consumer, and empty
+pipeline-health consumer templates from `investigator/runtime/`. The compiler
+validates their subscriptions and installs a shared collection plan. Later
+activations preserve your YAML. The current formats are catalog version 2,
+log-rule version 1, and pipeline-health version 4.
+
+The collector owns `/var/lib/hermes-lab-observations/observations.sqlite3`.
+The directory is owned by `ec2-user`, grouped to `hermes-lab-executor`, with
+permissions `0750`; the database uses `0640`. The executor can query evidence
+without writing it. Consumers publish incidents to `findings/incidents.sqlite3`.
+An independent timer runs each built-in consumer. No pipeline code change or
+new dependency is required. Add approved CloudWatch groups through the optional
+`collection_log_groups` Terraform input before declaring those catalog sources;
+review the IAM plan before applying it. CloudTrail collection requires the
+existing enabled CloudTrail package and explicit resource names.
 Lambda uses Python 3.14 too; image changes verify Python before services stop.
 
 On a fresh runtime host, log in to Hermes:
