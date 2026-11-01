@@ -19,6 +19,7 @@ venvPath = "."
 venv = ".venv"
 include = [
     "collector",
+    "observations",
     "incidents",
     "investigator",
     "tool_boundary",
