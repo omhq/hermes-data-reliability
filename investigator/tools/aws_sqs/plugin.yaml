@@ -1,0 +1,3 @@
+name: hermes-sqs
+version: 0.1.0
+description: Scoped SQS queue metadata reads through the trusted host executor.
