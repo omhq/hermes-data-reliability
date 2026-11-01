@@ -93,7 +93,7 @@ def main() -> None:
     incident_id = args.incident or args.retry_incident
 
     if incident_id and not re.fullmatch(
-        r"(?:[a-f0-9]{24}|log-[a-f0-9]{32})", incident_id
+        r"(?:[a-f0-9]{24}|(?:log|health)-[a-f0-9]{32})", incident_id
     ):
         parser.error("incident must be a saved incident ID")
 

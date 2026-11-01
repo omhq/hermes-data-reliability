@@ -13,22 +13,29 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
-from collector.configure import configure
-from collector.definition import duration
-from collector.matching import MatchError
-from collector.observation_store import source_key
+from collector.definition import feeds
 from incidents.database import connect, validate_schema
+from investigator.consumers.log_rules.matching import MatchError
 from investigator.logging_config import configure_logging
 from investigator.runtime.reports import export
+from observations import store
+from observations.configuration import duration
 
 from . import control
+from .configure_observations import configure
 from .locking import investigation_lock
 from .notification_store import LOCK_NAME, PRESERVED_FILES
 from .sessions import SessionUnavailable
 
 ROOT = Path("/srv/hermes-lab")
 APPROVED = Path("/etc/hermes-lab/executor.json")
-LOCK_FILES = {".poll.lock", ".investigation.lock", LOCK_NAME}
+LOCK_FILES = {
+    ".poll.lock",
+    ".log-rules.lock",
+    ".investigation.lock",
+    LOCK_NAME,
+}
+OBSERVATIONS = Path("/var/lib/hermes-lab-observations/observations.sqlite3")
 LOGGER = logging.getLogger(__name__)
 
 
@@ -81,23 +88,21 @@ def prepare_findings(
         with ledger:
             ledger.executemany("INSERT INTO attempts VALUES (?, ?)", attempts)
 
-            for source_id, source in definition["sources"].items():
-                key = source_key(source_id, source, account_id)
-
-                ledger.execute(
-                    """
-                    INSERT INTO source_progress
-                        (source_key, source_id, cursor_ms)
-                    VALUES (?, ?, ?)
-                    """,
-                    (key, source_id, since_ms),
-                )
-                ledger.execute(
-                    "INSERT INTO collection_starts VALUES (?, ?)",
-                    (key, since_ms),
-                )
-
         export(ledger, destination)
+
+    with closing(
+        store.connect(destination.parent / "observations.sqlite3")
+    ) as evidence:
+        with evidence:
+            for feed in feeds(definition):
+                if feed.source.account != account_id:
+                    raise ValueError("Collection account changed")
+
+                store.register(evidence, feed.source, since_ms)
+
+            evidence.execute(
+                "UPDATE sources SET retained_since_ms = ?", (since_ms,)
+            )
 
     for path in (destination, *destination.rglob("*")):
         os.chown(path, 1000, 1000)
@@ -150,6 +155,21 @@ def replace_findings(
         )
     )
 
+    compiled_archive = archive / "compiled"
+    compiled_archive.mkdir()
+
+    for filename in (
+        "collection.json",
+        "log-rules.json",
+        "pipeline-health.json",
+    ):
+        shutil.copy2(
+            Path("/etc/hermes-lab") / filename, compiled_archive / filename
+        )
+
+    if OBSERVATIONS.exists():
+        shutil.copy2(OBSERVATIONS, archive / "observations.sqlite3")
+
     moved = []
     installed = []
 
@@ -164,7 +184,23 @@ def replace_findings(
             installed.append(path.name)
 
         (stage / "observations.yaml").replace(root / "observations.yaml")
+        (stage / "observations.sqlite3").replace(OBSERVATIONS)
+        os.chown(OBSERVATIONS, 1000, OBSERVATIONS.parent.stat().st_gid)
+        OBSERVATIONS.chmod(0o640)
+
+        for path in (stage / "compiled").iterdir():
+            path.replace(Path("/etc/hermes-lab") / path.name)
     except BaseException:
+        if (archive / "observations.sqlite3").exists():
+            shutil.copy2(archive / "observations.sqlite3", OBSERVATIONS)
+            os.chown(OBSERVATIONS, 1000, OBSERVATIONS.parent.stat().st_gid)
+            OBSERVATIONS.chmod(0o640)
+
+        shutil.copy2(archive / "observations.yaml", root / "observations.yaml")
+
+        for path in compiled_archive.iterdir():
+            shutil.copy2(path, Path("/etc/hermes-lab") / path.name)
+
         for name in installed:
             (findings / name).rename(stage / "findings" / name)
 
@@ -187,11 +223,19 @@ def reset_collector(
         prefix=".collector-reset-", dir=ROOT
     ) as temporary:
         stage = Path(temporary)
+        for filename in (
+            "observations.yaml",
+            "log-rules.yaml",
+            "pipeline-health.yaml",
+        ):
+            shutil.copy2(ROOT / filename, stage / filename)
+
         definition = configure(
+            stage,
+            ROOT / "code/investigator/runtime",
             approved,
-            stage / "observations.yaml",
-            ROOT / "observations.yaml",
-            source=observations or ROOT / "observations.yaml",
+            stage / "compiled",
+            catalog_source=observations,
         )
         findings = ROOT / "findings"
 

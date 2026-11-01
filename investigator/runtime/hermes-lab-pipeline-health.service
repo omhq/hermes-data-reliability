@@ -1,0 +1,17 @@
+[Unit]
+Description=Evaluate configured pipeline delivery expectations
+Requires=hermes-lab-executor.service
+After=hermes-lab-executor.service
+PartOf=hermes-lab.target
+ConditionPathExists=/srv/hermes-lab/ops/enabled
+
+[Service]
+Type=oneshot
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/srv/hermes-lab/code
+ExecStart=/usr/bin/python3.14 -m investigator.capabilities.pipeline_health.scheduler --config /etc/hermes-lab/executor.json --findings /srv/hermes-lab/findings
+TimeoutStartSec=50
+NoNewPrivileges=yes
+PrivateTmp=yes
+UMask=0077

@@ -1,0 +1,16 @@
+[Unit]
+Description=Evaluate log rules against shared collected evidence
+After=hermes-lab-poller.service
+PartOf=hermes-lab.target
+ConditionPathExists=/srv/hermes-lab/ops/enabled
+
+[Service]
+Type=oneshot
+User=ec2-user
+Group=hermes-lab-executor
+UMask=0027
+WorkingDirectory=/srv/hermes-lab/code
+ExecStart=/srv/hermes-lab/collector-venv-py314/bin/python -m investigator.consumers.log_rules.cli --definition /etc/hermes-lab/log-rules.json --plan /etc/hermes-lab/collection.json --store /var/lib/hermes-lab-observations/observations.sqlite3 --findings /srv/hermes-lab/findings
+TimeoutStartSec=60
+NoNewPrivileges=true
+PrivateTmp=true

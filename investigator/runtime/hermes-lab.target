@@ -1,6 +1,6 @@
 [Unit]
 Description=Hermes Lab collection and investigation
-Wants=hermes-lab-tools.service hermes-lab-runtime.service hermes-lab-poller.timer hermes-lab-investigation.timer hermes-lab-notifications.timer
+Wants=hermes-lab-tools.service hermes-lab-runtime.service hermes-lab-poller.timer hermes-lab-log-rules.timer hermes-lab-investigation.timer hermes-lab-notifications.timer hermes-lab-pipeline-health.timer
 
 [Install]
 WantedBy=multi-user.target

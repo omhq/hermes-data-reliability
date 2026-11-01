@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import re
 import signal
@@ -9,7 +10,7 @@ from importlib import import_module
 from pathlib import Path
 from types import FrameType
 
-from tool_boundary.catalog import ToolPackages
+from tool_boundary.selection import select_toolsets
 
 WORKERS = Path("/tmp/hermes-lab-chats")
 
@@ -48,6 +49,10 @@ def read_agent_config(home: Path) -> object:
         raise ValueError("Invalid agent tool package configuration") from None
 
 
+def read_package_manifest() -> object:
+    return json.loads(Path("/opt/hermes-lab/tool-packages.json").read_bytes())
+
+
 def launch(
     session_id: str,
     seconds: float,
@@ -58,11 +63,13 @@ def launch(
     home = Path(os.environ.get("HERMES_HOME", "/opt/data"))
 
     try:
-        selection = ToolPackages.from_agent_config(read_agent_config(home))
-    except ValueError, TypeError:
+        toolsets = select_toolsets(
+            read_agent_config(home), read_package_manifest()
+        )
+    except ValueError, TypeError, OSError:
         raise ValueError("Invalid agent tool package configuration") from None
 
-    if not selection.toolsets:
+    if not toolsets:
         raise ValueError(
             "Enable at least one cloud tool package in config.yaml"
         )
@@ -72,7 +79,7 @@ def launch(
         "chat",
         "--cli",
         "--toolsets",
-        ",".join(selection.toolsets),
+        ",".join(toolsets),
         "--in",
         "/opt/hermes-lab/incident" if incident else "/opt/hermes-lab/chat",
     ]

@@ -1,0 +1,8 @@
+# Add expectations using docs/OBSERVATION_CONFIG.md.
+version: 4
+consumer:
+  id: pipeline_health
+  enabled: true
+  subscriptions: {}
+sources: {}
+pipelines: {}

@@ -11,7 +11,9 @@ from typing import Any
 
 from incidents.database import UnsupportedLedger, validate_schema
 from investigator.logging_config import configure_logging
+from tool_boundary.catalog import ToolPackages
 
+from . import observation_state
 from .containers import validate_image, verify_image_python
 from .locking import investigation_lock
 from .notification_store import (
@@ -133,6 +135,22 @@ def stop_services() -> None:
     # Complete builds before stopping the currently running deployment.
     units = Path("/etc/systemd/system")
 
+    if (units / "hermes-lab-log-rules.timer").exists():
+        run(
+            "systemctl",
+            "stop",
+            "hermes-lab-log-rules.timer",
+            "hermes-lab-log-rules.service",
+        )
+
+    if (units / "hermes-lab-pipeline-health.timer").exists():
+        run(
+            "systemctl",
+            "stop",
+            "hermes-lab-pipeline-health.timer",
+            "hermes-lab-pipeline-health.service",
+        )
+
     if (units / "hermes-lab-notifications.timer").exists():
         run(
             "systemctl",
@@ -215,8 +233,7 @@ def save_checkpoint(first: bool) -> tuple[dict[str, Any] | None, Path]:
         if (ROOT / folder).exists():
             shutil.copytree(ROOT / folder, offline / folder, symlinks=True)
 
-    if (ROOT / "observations.yaml").exists():
-        shutil.copy2(ROOT / "observations.yaml", offline / "observations.yaml")
+    observation_state.snapshot(ROOT, offline)
 
     return old_runtime, offline
 
@@ -271,6 +288,27 @@ def activate_release(
 
 
 def install_units(was_running: bool) -> None:
+    instructions = (RELEASE / "investigator/runbooks/CHAT.md").read_text()
+    packages = ToolPackages.from_executor_config(
+        json.loads((ROOT / "investigator.json").read_text())
+    )
+
+    manifest = OPS / "tool-packages.json"
+    manifest.write_text(json.dumps(packages.manifest()))
+    manifest.chmod(0o644)
+
+    if "hermes-pipeline-health" in packages.enabled:
+        instructions += (
+            "\n"
+            + (
+                RELEASE / "investigator/capabilities/pipeline_health/skills/"
+                "investigate_pipeline_health/SKILL.md"
+            ).read_text()
+        )
+
+    (OPS / "chat-runbook.md").write_text(instructions)
+    (OPS / "chat-runbook.md").chmod(0o644)
+
     for path in (RELEASE / "investigator/runtime").glob("hermes-lab*"):
         if path.suffix in (".service", ".timer", ".target"):
             shutil.copy2(path, Path("/etc/systemd/system") / path.name)
@@ -309,13 +347,15 @@ def prepare_collector() -> None:
     run(
         str(environment / "bin/python"),
         "-m",
-        "collector.configure",
+        "investigator.runtime.configure_observations",
         "--approved",
         str(ROOT / "investigator.json"),
+        "--root",
+        str(ROOT),
+        "--templates",
+        str(RELEASE / "investigator/runtime"),
         "--destination",
-        str(ROOT / "observations.yaml"),
-        "--template",
-        str(RELEASE / "investigator/runtime/observations.yaml"),
+        "/etc/hermes-lab",
         cwd=RELEASE,
     )
 

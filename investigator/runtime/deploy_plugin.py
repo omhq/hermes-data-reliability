@@ -7,6 +7,8 @@ import subprocess
 import tarfile
 from pathlib import Path
 
+from tool_boundary.registered import REGISTRY
+
 from .deploy import PROJECT_ROOT, ssh_command, terraform_output
 
 
@@ -23,8 +25,8 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
         root / "tool_boundary/wire.py",
     ]
 
-    for package in ("hermes_lab_aws", "aws_cloudwatch", "aws_cloudtrail"):
-        directory = root / "investigator/tools" / package
+    for provider in REGISTRY.packages.values():
+        directory = root / provider.plugin_directory()
         paths.extend(directory.glob("*.py"))
         paths.append(directory / "plugin.yaml")
 

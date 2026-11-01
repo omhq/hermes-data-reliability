@@ -1,0 +1,11 @@
+[Unit]
+Description=Consume collected pipeline logs
+PartOf=hermes-lab.target
+
+[Timer]
+OnBootSec=20
+OnUnitInactiveSec=15
+Unit=hermes-lab-log-rules.service
+
+[Install]
+WantedBy=hermes-lab.target

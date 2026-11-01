@@ -42,7 +42,8 @@ def verify(release: Path) -> dict[str, Any]:
 
     with closing(sqlite3.connect(database_path, uri=True)) as database:
         row = database.execute(
-            "SELECT evidence FROM incidents ORDER BY detected_at DESC LIMIT 1"
+            "SELECT evidence FROM incidents WHERE kind = 'run' "
+            "ORDER BY detected_at DESC LIMIT 1"
         ).fetchone()
 
     if row is None:
@@ -111,6 +112,10 @@ def verify(release: Path) -> dict[str, Any]:
         f"type=bind,src={release}/investigator/tools/aws_cloudwatch,dst=/opt/cloudwatch-plugin,readonly",
         "--mount",
         f"type=bind,src={release}/investigator/tools/aws_cloudtrail,dst=/opt/cloudtrail-plugin,readonly",
+        "--mount",
+        f"type=bind,src={release}/investigator/tools/aws_sqs,dst=/opt/sqs-plugin,readonly",
+        "--mount",
+        f"type=bind,src={release}/investigator/tools/aws_lambda,dst=/opt/lambda-plugin,readonly",
         "--mount",
         f"type=bind,src={release}/investigator/runtime/verify_plugin_image.py,dst=/verify.py,readonly",
         "--mount",

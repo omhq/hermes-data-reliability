@@ -9,14 +9,21 @@ from pathlib import Path
 
 from investigator.logging_config import configure_logging
 
-from .deploy import PROJECT_ROOT, ssh_command, terraform_output
+from .deploy import (
+    PROJECT_ROOT,
+    ssh_command,
+    terraform_output,
+    validate_tool_configuration,
+)
 
 LOGGER = logging.getLogger(__name__)
 
 
 def build_archive(root: Path = PROJECT_ROOT) -> bytes:
     output = io.BytesIO()
-    paths = list((root / "tool_boundary").glob("*.py")) + [
+    paths = list((root / "tool_boundary").rglob("*.py")) + [
+        root / "incidents/__init__.py",
+        root / "incidents/specification.py",
         root / "investigator/__init__.py",
         root / "investigator/logging_config.py",
         root / "investigator/cli_output.py",
@@ -25,6 +32,8 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
         root / "investigator/runtime/install_executor.py",
         root / "investigator/runtime/hermes-lab-executor.service",
     ]
+    paths.extend((root / "investigator/capabilities").rglob("*.py"))
+    paths.extend((root / "observations").glob("*.py"))
 
     with tarfile.open(fileobj=output, mode="w") as archive:
         for path in sorted(paths):
@@ -51,6 +60,8 @@ def main() -> None:
         terraform_output("ssh_destination", raw=True).decode().strip()
     )
     ssh = ssh_command(args, destination)
+    configuration = terraform_output("investigator")
+    validate_tool_configuration(configuration)
     archive = build_archive()
     release_id = hashlib.sha256(archive).hexdigest()[:20]
 
@@ -65,7 +76,7 @@ def main() -> None:
         )
         subprocess.run(
             ssh + [f"umask 077 && cat > {stage}/investigator.json"],
-            input=terraform_output("investigator"),
+            input=configuration,
             check=True,
         )
 

@@ -11,8 +11,12 @@ from pathlib import Path
 
 import yaml
 
+from investigator.capabilities.pipeline_health.definition import (
+    approved_resources,
+)
 from investigator.logging_config import configure_logging
 from tool_boundary.catalog import ToolPackages
+from tool_boundary.loader import load_tools
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOGGER = logging.getLogger(__name__)
@@ -29,9 +33,12 @@ def terraform_output(name: str, raw: bool = False) -> bytes:
 def validate_tool_configuration(executor_config: bytes) -> None:
     """Reject stale host capabilities before uploading a new agent config."""
     try:
-        snapshot = ToolPackages.from_executor_config(
-            json.loads(executor_config)
-        )
+        decoded = json.loads(executor_config)
+        snapshot = ToolPackages.from_executor_config(decoded)
+        load_tools(decoded)
+
+        if "hermes-pipeline-health" in snapshot.enabled:
+            approved_resources(decoded)
         configuration = yaml.safe_load(
             (PROJECT_ROOT / "investigator/runtime/config.yaml").read_text()
         )
@@ -53,6 +60,7 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
 
     for folder in (
         "collector",
+        "observations",
         "incidents",
         "investigator",
         "tool_boundary",

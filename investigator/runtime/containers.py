@@ -4,6 +4,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from tool_boundary.registered import REGISTRY
+
 ROOT = Path("/srv/hermes-lab")
 
 
@@ -119,6 +121,16 @@ def runtime_arguments(runtime: dict[str, str]) -> list[str]:
 
     validate_image(image)
 
+    plugin_mounts = []
+
+    for name, provider in REGISTRY.packages.items():
+        plugin_mounts.extend(
+            [
+                "-v",
+                f"{ROOT}/code/{provider.plugin_directory()}:/opt/hermes/plugins/{name}:ro",
+            ]
+        )
+
     return common_arguments("create") + [
         "--name",
         "hermes-lab-runtime",
@@ -158,22 +170,19 @@ def runtime_arguments(runtime: dict[str, str]) -> list[str]:
         f"{ops}/tool-client:/run/tool-client:ro",
         "-v",
         f"{ops}/known_hosts:/etc/ssh/ssh_known_hosts:ro",
-        "-v",
-        f"{ROOT}/code/investigator/tools/hermes_lab_aws:/opt/hermes/plugins/hermes-lab-aws:ro",
-        "-v",
-        f"{ROOT}/code/investigator/tools/aws_cloudwatch:/opt/hermes/plugins/hermes-cloudwatch:ro",
-        "-v",
-        f"{ROOT}/code/investigator/tools/aws_cloudtrail:/opt/hermes/plugins/hermes-cloudtrail:ro",
+        *plugin_mounts,
         "-v",
         f"{ROOT}/code/tool_boundary/__init__.py:/opt/hermes-lab/tool_boundary/__init__.py:ro",
         "-v",
-        f"{ROOT}/code/tool_boundary/catalog.py:/opt/hermes-lab/tool_boundary/catalog.py:ro",
+        f"{ROOT}/code/tool_boundary/selection.py:/opt/hermes-lab/tool_boundary/selection.py:ro",
+        "-v",
+        f"{ops}/tool-packages.json:/opt/hermes-lab/tool-packages.json:ro",
         "-v",
         "/run/hermes-lab-executor/requests:/run/hermes-lab-aws:ro",
         "-v",
         f"{ROOT}/code/investigator/runtime/chat_worker.py:/opt/hermes-lab/chat_worker.py:ro",
         "-v",
-        f"{ROOT}/code/investigator/runbooks/CHAT.md:/opt/hermes-lab/chat/AGENTS.md:ro",
+        f"{ops}/chat-runbook.md:/opt/hermes-lab/chat/AGENTS.md:ro",
         "-v",
         f"{ROOT}/code/investigator/runbooks/RUNBOOK.md:/opt/hermes-lab/incident/AGENTS.md:ro",
         image,

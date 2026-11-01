@@ -9,6 +9,12 @@ NAMES = {
     "search_run_logs": "aws_cloudwatch",
     "list_run_objects": "hermes_lab_aws",
     "read_run_object": "hermes_lab_aws",
+    "describe_sqs_scope": "aws_sqs",
+    "get_sqs_queue_attributes": "aws_sqs",
+    "describe_lambda_scope": "aws_lambda",
+    "get_lambda_function_configuration": "aws_lambda",
+    "get_lambda_function_concurrency": "aws_lambda",
+    "get_lambda_event_source_mapping": "aws_lambda",
 }
 
 
@@ -26,7 +32,12 @@ def main() -> None:
         json.dumps(
             {
                 "plugins": {
-                    "enabled": ["hermes-lab-aws", "hermes-cloudwatch"]
+                    "enabled": [
+                        "hermes-lab-aws",
+                        "hermes-cloudwatch",
+                        "hermes-sqs",
+                        "hermes-lambda",
+                    ]
                 },
                 "security": {"allow_lazy_installs": False},
             }
@@ -35,6 +46,8 @@ def main() -> None:
     (home / "plugins/hermes-lab-aws").symlink_to("/opt/lab-plugin")
     (home / "plugins/hermes-cloudwatch").symlink_to("/opt/cloudwatch-plugin")
     (home / "plugins/hermes-cloudtrail").symlink_to("/opt/cloudtrail-plugin")
+    (home / "plugins/hermes-sqs").symlink_to("/opt/sqs-plugin")
+    (home / "plugins/hermes-lambda").symlink_to("/opt/lambda-plugin")
 
     # Hermes provides these modules only in the image. Load them after the
     # isolated profile exists and never use the running profile.
@@ -57,7 +70,7 @@ def main() -> None:
             "native_registration",
         )
 
-    passed("native_plugin_discovery_and_three_registrations")
+    passed("native_plugin_discovery_and_registrations")
 
     require(
         registry.get_entry("lookup_cloudtrail_events", scope=manager.scope_key)

@@ -33,7 +33,8 @@ def main() -> None:
         "file:/srv/hermes-lab/findings/incidents.sqlite3?mode=ro", uri=True
     ) as database:
         row = database.execute(
-            "SELECT evidence FROM incidents ORDER BY detected_at DESC LIMIT 1"
+            "SELECT evidence FROM incidents WHERE kind = 'run' "
+            "ORDER BY detected_at DESC LIMIT 1"
         ).fetchone()
 
     check(row is not None, "synthetic_fixture_available")

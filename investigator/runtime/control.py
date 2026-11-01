@@ -16,6 +16,7 @@ from incidents.queue import budget_status
 from investigator.cli_output import write_json
 from investigator.logging_config import configure_logging
 
+from . import observation_state
 from .containers import verify_image_python
 from .notification_store import (
     DATABASE_NAME,
@@ -51,6 +52,10 @@ def pause() -> None:
         "hermes-lab-investigation.service",
         "hermes-lab-notifications.timer",
         "hermes-lab-notifications.service",
+        "hermes-lab-pipeline-health.timer",
+        "hermes-lab-log-rules.timer",
+        "hermes-lab-pipeline-health.service",
+        "hermes-lab-log-rules.service",
         "hermes-lab-runtime.service",
         "hermes-lab-tools.service",
         "hermes-lab.target",
@@ -62,17 +67,19 @@ def configure_collector(observations: Path | None = None) -> None:
     arguments = [
         str(ROOT / "collector-venv-py314/bin/python"),
         "-m",
-        "collector.configure",
+        "investigator.runtime.configure_observations",
         "--approved",
         "/etc/hermes-lab/executor.json",
+        "--root",
+        str(ROOT),
+        "--templates",
+        str(ROOT / "code/investigator/runtime"),
         "--destination",
-        str(ROOT / "observations.yaml"),
-        "--template",
-        str(ROOT / "code/investigator/runtime/observations.yaml"),
+        "/etc/hermes-lab",
     ]
 
     if observations is not None:
-        arguments.extend(["--source", str(observations)])
+        arguments.extend(["--catalog", str(observations)])
 
     run(*arguments, cwd=ROOT / "code")
 
@@ -94,6 +101,8 @@ def start_services() -> None:
         "hermes-lab-poller.timer",
         "hermes-lab-investigation.timer",
         "hermes-lab-notifications.timer",
+        "hermes-lab-pipeline-health.timer",
+        "hermes-lab-log-rules.timer",
     )
 
 
@@ -111,6 +120,9 @@ def status() -> None:
             "mode": "running" if (OPS / "enabled").exists() else "paused",
             "runtime": state,
             "observations": str(ROOT / "observations.yaml"),
+            "log_rules": str(ROOT / "log-rules.yaml"),
+            "observation_database": str(observation_state.STORE),
+            "pipeline_health": str(ROOT / "pipeline-health.yaml"),
             "investigation_budget": budget,
         },
         indent=2,
@@ -125,6 +137,8 @@ def status() -> None:
         "hermes-lab-investigation.timer",
         "hermes-lab-health.timer",
         "hermes-lab-notifications.timer",
+        "hermes-lab-pipeline-health.timer",
+        "hermes-lab-log-rules.timer",
         "hermes-lab-executor.service",
         "-p",
         "Id",
@@ -159,8 +173,7 @@ def checkpoint() -> Path:
         OPS / "investigator.runtime.json", target / "investigator.runtime.json"
     )
 
-    if (ROOT / "observations.yaml").exists():
-        shutil.copy2(ROOT / "observations.yaml", target / "observations.yaml")
+    observation_state.snapshot(ROOT, target)
 
     (OPS / "checkpoint.json").write_text(json.dumps({"path": str(target)}))
 
@@ -176,6 +189,9 @@ def restore_files(source: str | Path) -> None:
         "hermes-lab-poller.service",
         "hermes-lab-investigation.service",
         "hermes-lab-notifications.service",
+        "hermes-lab-pipeline-health.service",
+        "hermes-lab-log-rules.service",
+        "hermes-lab-executor.service",
     ):
         result = subprocess.run(["systemctl", "is-active", "--quiet", service])
 
@@ -232,14 +248,10 @@ def restore_files(source: str | Path) -> None:
                         "Restored notification integrity check failed"
                     )
 
+        observation_state.validate(source)
         saved = checkpoint()
 
-        if (source / "observations.yaml").is_file():
-            shutil.copy2(
-                source / "observations.yaml", ROOT / "observations.yaml"
-            )
-            os.chown(ROOT / "observations.yaml", 0, 0)
-            (ROOT / "observations.yaml").chmod(0o644)
+        observation_state.restore(ROOT, source)
 
         for folder, uid in (("hermes", 10000), ("findings", 1000)):
             for path in [stage / folder, *(stage / folder).rglob("*")]:

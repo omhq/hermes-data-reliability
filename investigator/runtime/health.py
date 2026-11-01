@@ -70,6 +70,29 @@ def healthy() -> dict[str, Any]:
                 "systemctl",
                 "is-active",
                 "--quiet",
+                "hermes-lab-pipeline-health.timer",
+            ]
+        ).returncode:
+            issues.append("pipeline_health_timer_stopped")
+
+        try:
+            health_tick = json.loads(
+                (ROOT / "findings/last-pipeline-health.json").read_text()
+            )
+
+            if health_tick.get("check_errors", 0):
+                issues.append("pipeline_health_checks_failed")
+
+            if time.time() - health_tick["completed_at"] > 600:
+                issues.append("pipeline_health_scheduler_stale")
+        except OSError, ValueError, KeyError:
+            issues.append("pipeline_health_heartbeat_missing")
+
+        if subprocess.run(
+            [
+                "systemctl",
+                "is-active",
+                "--quiet",
                 "hermes-lab-executor.service",
             ]
         ).returncode:
@@ -112,6 +135,23 @@ def healthy() -> dict[str, Any]:
                 issues.append("collector_source_degraded")
         except OSError, ValueError, KeyError:
             issues.append("poller_heartbeat_missing")
+
+        if subprocess.run(
+            ["systemctl", "is-active", "--quiet", "hermes-lab-log-rules.timer"]
+        ).returncode:
+            issues.append("log_rules_timer_stopped")
+
+        try:
+            consumer = json.loads(
+                (ROOT / "findings/last-log-rules.json").read_text()
+            )
+
+            if time.time() - consumer["completed_at"] > 600:
+                issues.append("log_rules_consumer_stale")
+            if consumer["status"] not in {"ready", "disabled"}:
+                issues.append("log_rules_consumer_degraded")
+        except OSError, ValueError, KeyError:
+            issues.append("log_rules_heartbeat_missing")
 
         if subprocess.run(
             [
