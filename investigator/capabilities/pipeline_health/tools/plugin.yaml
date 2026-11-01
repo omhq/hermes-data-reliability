@@ -1,0 +1,3 @@
+name: hermes-pipeline-health
+version: 0.1.0
+description: Configured delivery expectations, bounded checks, and check history.
