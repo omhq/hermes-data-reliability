@@ -1,4 +1,5 @@
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -61,6 +62,24 @@ class IncidentContext:
     incident_time_ms: int
     expires_at_ms: int
 
+    def validate(self) -> None:
+        if (
+            type(self.run_id) is not str
+            or re.fullmatch(r"[a-f0-9]{24}", self.run_id) is None
+        ):
+            raise PolicyDenied("invalid_context")
+        if type(self.attempt_ids) is not tuple or any(
+            type(value) is not str
+            or re.fullmatch(r"[A-Za-z0-9-]{1,80}", value) is None
+            for value in self.attempt_ids
+        ):
+            raise PolicyDenied("invalid_context")
+        if any(
+            type(value) is not int or value <= 0
+            for value in (self.incident_time_ms, self.expires_at_ms)
+        ):
+            raise PolicyDenied("invalid_context")
+
 
 @dataclass(frozen=True)
 class PolicyLimits:
@@ -74,6 +93,16 @@ class PolicyLimits:
     max_keys: int = 20
     log_window_seconds: int = 900
     timeout_seconds: int = 30
+
+    def validate(self) -> None:
+        if (
+            any(
+                type(value) is not int or value <= 0
+                for value in vars(self).values()
+            )
+            or not self.default_bytes <= self.max_bytes <= self.total_bytes
+        ):
+            raise PolicyDenied("invalid_limits")
 
 
 @dataclass(frozen=True)
@@ -89,6 +118,22 @@ class ResourceContext:
     start_time_ms: int
     end_time_ms: int
     expires_at_ms: int
+
+    def validate(self) -> None:
+        if (
+            type(self.profile) is not str
+            or not self.profile
+            or any(
+                type(value) is not int or value <= 0
+                for value in (
+                    self.start_time_ms,
+                    self.end_time_ms,
+                    self.expires_at_ms,
+                )
+            )
+            or not self.start_time_ms < self.end_time_ms
+        ):
+            raise PolicyDenied("invalid_context")
 
     @property
     def run_id(self) -> str:

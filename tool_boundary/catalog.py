@@ -1,46 +1,18 @@
 from dataclasses import dataclass
-from typing import Self
+from typing import Any, Self
 
-PACKAGE_TOOLSETS = {
-    "hermes-lab-aws": "hermes_lab_aws",
-    "hermes-cloudwatch": "aws_cloudwatch",
-    "hermes-cloudtrail": "aws_cloudtrail",
-}
-PACKAGE_TOOLS = {
-    "hermes-lab-aws": frozenset(
-        {
-            "list_run_objects",
-            "read_run_object",
-            "list_aws_resources",
-            "list_s3_objects",
-            "read_s3_object",
-        }
-    ),
-    "hermes-cloudwatch": frozenset(
-        {"describe_cloudwatch_scope", "search_run_logs", "search_log_events"}
-    ),
-    "hermes-cloudtrail": frozenset(
-        {"describe_cloudtrail_scope", "lookup_cloudtrail_events"}
-    ),
-}
-ALL_TOOLS: frozenset[str] = frozenset().union(*PACKAGE_TOOLS.values())
+from .registered import REGISTRY
+from .registry import ToolRegistry
 
 
-def names(value: object, allowed: set[str] | None = None) -> tuple[str, ...]:
+def names(value: object, allowed: set[str]) -> tuple[str, ...]:
     if type(value) is not list or len(value) > 50:
         raise ValueError("Invalid tool package configuration")
 
     result = []
 
     for item in value:
-        if (
-            type(item) is not str
-            or not 1 <= len(item) <= 2048
-            or any(ord(character) < 32 for character in item)
-            or item in result
-            or allowed is not None
-            and item not in allowed
-        ):
+        if type(item) is not str or item not in allowed or item in result:
             raise ValueError("Invalid tool package configuration")
 
         result.append(item)
@@ -51,62 +23,83 @@ def names(value: object, allowed: set[str] | None = None) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class ToolPackages:
     enabled: tuple[str, ...]
-    cloudtrail_resources: tuple[str, ...]
+    options: dict[str, dict[str, Any]]
+    registry: ToolRegistry = REGISTRY
 
     @classmethod
-    def parse(
-        cls, enabled: object, disabled: object, resources: object
+    def from_agent_config(
+        cls, config: object, registry: ToolRegistry = REGISTRY
     ) -> Self:
-        approved = set(PACKAGE_TOOLSETS)
-        active = names(enabled, approved)
-        denied = names(disabled, approved)
-        selected = tuple(name for name in active if name not in denied)
-        resources = names(resources)
-
-        if "hermes-cloudtrail" in selected and not resources:
-            raise ValueError("CloudTrail requires explicit resource_names")
-
-        return cls(selected, resources)
-
-    @classmethod
-    def from_agent_config(cls, config: object) -> Self:
         if type(config) is not dict or type(config.get("plugins")) is not dict:
             raise ValueError("Agent configuration requires plugins")
 
         plugins = config["plugins"]
+        allowed = set(registry.packages)
+        active = names(plugins.get("enabled", []), allowed)
+        disabled = names(plugins.get("disabled", []), allowed)
+        selected = tuple(name for name in active if name not in disabled)
         entries = plugins.get("entries", {})
 
-        if type(entries) is not dict:
+        if type(entries) is not dict or not entries.keys() <= allowed:
             raise ValueError("Invalid plugin entries")
 
-        cloudtrail = entries.get("hermes-cloudtrail", {})
+        options = {}
 
-        if type(cloudtrail) is not dict:
-            raise ValueError("Invalid CloudTrail configuration")
+        for name in set(selected) | set(entries):
+            provider = registry.package(name)
+            parsed = provider.agent_options(
+                entries.get(name, {}), name in selected
+            )
 
-        return cls.parse(
-            plugins.get("enabled", []),
-            plugins.get("disabled", []),
-            cloudtrail.get("resource_names", []),
-        )
+            if name in selected:
+                options[name] = parsed
+
+        return cls(selected, options, registry)
 
     @classmethod
-    def from_executor_config(cls, config: object) -> Self:
+    def from_executor_config(
+        cls, config: object, registry: ToolRegistry = REGISTRY
+    ) -> Self:
         if type(config) is not dict:
             raise ValueError("Invalid executor tool package configuration")
 
-        return cls.parse(
-            config.get("tool_packages"),
-            [],
-            config.get("cloudtrail_resource_names", []),
-        )
+        selected = names(config.get("tool_packages"), set(registry.packages))
+        options = {
+            name: registry.package(name).host_options(config, True)
+            for name in selected
+        }
+        return cls(selected, options, registry)
 
     @property
     def tools(self) -> frozenset[str]:
         return frozenset().union(
-            *(PACKAGE_TOOLS[name] for name in self.enabled)
+            *(self.registry.package(name).tools() for name in self.enabled)
         )
 
     @property
     def toolsets(self) -> tuple[str, ...]:
-        return tuple(PACKAGE_TOOLSETS[name] for name in self.enabled)
+        return tuple(
+            self.registry.package(name).toolset for name in self.enabled
+        )
+
+    def tools_for(self, mode: str) -> frozenset[str]:
+        return frozenset().union(
+            *(
+                self.registry.package(name).modes.get(mode, frozenset())
+                for name in self.enabled
+            )
+        )
+
+    def manifest(self) -> dict[str, Any]:
+        """Export selection metadata without serializing host configuration."""
+        return {
+            "version": 1,
+            "packages": {
+                name: {
+                    "enabled": name in self.enabled,
+                    "toolset": provider.toolset,
+                    "options": self.options.get(name, {}),
+                }
+                for name, provider in self.registry.packages.items()
+            },
+        }

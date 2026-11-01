@@ -9,16 +9,21 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 from .audit import AuditLog
-from .aws import AwsBackend
 from .executor import Executor
 from .models import PolicyDenied
-from .policy import fields, require, wall_time_ms
+from .providers.aws import AwsBackend
+from .validation import fields, require, wall_time_ms
 from .wire import ExecutionError, encode, receive
 
 LOGGER = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .contracts import ToolExtension
+
+type ExtensionFactory = Callable[[dict[str, Any], Path, Path], ToolExtension]
 
 
 class Handler(socketserver.BaseRequestHandler):
@@ -93,10 +98,21 @@ class Handler(socketserver.BaseRequestHandler):
         executor = server.executor
         owner = self.owner_uid if server.collector else None
 
+        if executor.extension is not None:
+            response = executor.extension.control(executor, request)
+
+            if response is not None:
+                return response
+
         if operation == "open":
             fields(request, {"operation", "context"}, set())
 
-            if server.collector:
+            extension_context = (
+                executor.extension is not None
+                and executor.extension.accepts_context(request["context"])
+            )
+
+            if server.collector and not extension_context:
                 context = request["context"]
                 required = (
                     {"observation_id", "incident_time_ms"}
@@ -152,7 +168,7 @@ class Server(socketserver.UnixStreamServer):
         os.chmod(path, 0o660 if shared or collector else 0o600)
 
 
-def main() -> None:
+def main(extension_factory: ExtensionFactory | None = None) -> None:
     formatter = logging.Formatter(
         "%(asctime)sZ %(levelname)s %(name)s: %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
@@ -167,6 +183,9 @@ def main() -> None:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--socket-dir", type=Path, required=True)
     parser.add_argument("--state-dir", type=Path, required=True)
+    parser.add_argument("--capability-config", type=Path)
+    parser.add_argument("--collection-plan", type=Path)
+    parser.add_argument("--observation-store", type=Path)
     parser.add_argument(
         "--collector-dir",
         type=Path,
@@ -178,9 +197,27 @@ def main() -> None:
     os.umask(0o077)
 
     config = json.loads(args.config.read_text())
+
+    if args.collection_plan is not None:
+        config["collection_plan"] = str(args.collection_plan)
+    if args.observation_store is not None:
+        config["observation_store"] = str(args.observation_store)
+
     backend = AwsBackend(config)
     audit = AuditLog(args.state_dir / "audit.jsonl")
-    executor = Executor(config, backend, audit)
+    extension = None
+
+    if extension_factory is not None:
+        if args.capability_config is None:
+            parser.error("The installed capability requires its configuration")
+
+        extension = extension_factory(
+            config, args.state_dir, args.capability_config
+        )
+    elif args.capability_config is not None:
+        parser.error("This entry point does not install a capability")
+
+    executor = Executor(config, backend, audit, extension=extension)
 
     # Both directories are systemd-owned, outside agent-writable storage.
     requests_dir = args.socket_dir / "requests"

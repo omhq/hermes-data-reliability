@@ -1,11 +1,8 @@
-import re
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import Any
 
-from .cloudtrail import cloudtrail_events
-from .wire import ExecutionError, decode, encode
-
-if TYPE_CHECKING:
-    from .models import ApprovedAction
+from .models import ApprovedAction
+from .wire import ExecutionError, encode
 
 
 def integer_parameter(action: ApprovedAction, name: str, minimum: int) -> int:
@@ -39,192 +36,53 @@ def fit_items(
     return data, truncated
 
 
-def object_result(
-    action: ApprovedAction, metadata: dict[str, Any], body: bytes | None
-) -> tuple[dict[str, str], bool]:
-    if type(body) is not bytes or len(body) > action.max_bytes:
-        raise ExecutionError("invalid_aws_response")
+def selected_fields(
+    response: dict[str, Any], expected: dict[str, type[object]]
+) -> dict[str, Any]:
+    selected = {}
 
-    text = body.decode("utf-8", errors="replace")
-
-    if len(encode({"text": ""})) > action.max_bytes:
-        raise ExecutionError("response_budget_too_small")
-
-    low, high = 0, len(text)
-
-    while low < high:
-        middle = (low + high + 1) // 2
-
-        if len(encode({"text": text[:middle]})) <= action.max_bytes:
-            low = middle
-        else:
-            high = middle - 1
-
-    content_range = metadata.get("ContentRange", "")
-    match = re.fullmatch(r"bytes [0-9]+-([0-9]+)/([0-9]+)", content_range)
-    partial = (
-        int(match[1]) + 1 < int(match[2])
-        if match
-        else len(body) >= action.max_bytes
-    )
-
-    # Unknown total length at the range limit is conservatively partial.
-    return {"text": text[:low]}, partial or low < len(text)
-
-
-def listing_result(
-    action: ApprovedAction, response: dict[str, Any]
-) -> tuple[dict[str, Any], bool]:
-    contents = response.get("Contents", [])
-
-    if (
-        type(contents) is not list
-        or type(response.get("IsTruncated", False)) is not bool
-    ):
-        raise ExecutionError("invalid_aws_response")
-
-    for field, expected in (
-        ("Name", action.parameters["Bucket"]),
-        ("Prefix", action.parameters["Prefix"]),
-    ):
-        if field in response and response[field] != expected:
-            raise ExecutionError("invalid_aws_response")
-
-    if "KeyCount" in response and (
-        type(response["KeyCount"]) is not int
-        or response["KeyCount"] != len(contents)
-    ):
-        raise ExecutionError("invalid_aws_response")
-
-    scope = action.exact_key or action.key_prefix
-
-    if scope is None:
-        raise ExecutionError("invalid_execution_plan")
-
-    maximum = integer_parameter(action, "MaxKeys", 1)
-    items = []
-    filtered = False
-
-    for entry in contents:
-        if type(entry) is not dict:
-            raise ExecutionError("invalid_aws_response")
-
-        key = entry.get("Key")
-        scoped = type(key) is str and (
-            key == scope if action.exact_key else key.startswith(scope)
-        )
-
-        if not scoped:
-            filtered = True
+    for name, kind in expected.items():
+        if name not in response:
             continue
-
-        if (
-            len(key) > 1024
-            or type(entry.get("Size")) is not int
-            or entry["Size"] < 0
-        ):
+        if type(response[name]) is not kind:
             raise ExecutionError("invalid_aws_response")
 
-        items.append({"key": key, "size": entry["Size"]})
+        selected[name] = response[name]
 
-    data, partial = fit_items("objects", items[:maximum], action.max_bytes)
-
-    # Missing completion metadata cannot establish absence of an object.
-    complete = (
-        response.get("IsTruncated") is False
-        and type(response.get("KeyCount")) is int
-        and response["KeyCount"] == len(contents)
-        and response.get("Name") == action.parameters["Bucket"]
-        and response.get("Prefix") == action.parameters["Prefix"]
-        and not response.get("CommonPrefixes")
-    )
-
-    return data, (
-        partial
-        or filtered
-        or len(items) > maximum
-        or not complete
-        or bool(response.get("NextContinuationToken"))
-    )
+    return selected
 
 
-def logs_result(
-    action: ApprovedAction, response: dict[str, Any]
-) -> tuple[dict[str, Any], bool]:
-    events = response.get("events")
+@dataclass(frozen=True)
+class Evidence:
+    data: dict[str, Any]
+    references: list[dict[str, str]]
+    truncated: bool = False
+    collection: str | None = None
 
-    if type(events) is not list:
-        raise ExecutionError("invalid_aws_response")
+    def bounded(self) -> Evidence:
+        references = []
 
-    start = integer_parameter(action, "startTime", 0)
-    end = integer_parameter(action, "endTime", start)
-    maximum = integer_parameter(action, "limit", 1)
-    items = []
-    filtered = False
+        for reference in self.references:
+            if (
+                len(references) >= 20
+                or len(encode(references + [reference])) > 4096
+            ):
+                break
 
-    for event in events:
-        if type(event) is not dict:
-            raise ExecutionError("invalid_aws_response")
+            references.append(reference)
 
-        timestamp = event.get("timestamp")
-        message = event.get("message")
+        limited = len(references) != len(self.references)
+        data = self.data
 
-        if type(timestamp) is not int or type(message) is not str:
-            raise ExecutionError("invalid_aws_response")
+        if limited:
+            if self.collection is None:
+                raise ExecutionError("reference_budget_exceeded")
 
-        try:
-            structured = decode(message)
-        except ExecutionError:
-            structured = None
+            data = {
+                **data,
+                self.collection: data[self.collection][: len(references)],
+            }
 
-        if (
-            action.run_id
-            and (
-                type(structured) is not dict
-                or structured.get("run_id") != action.run_id
-            )
-        ) or not start <= timestamp <= end:
-            filtered = True
-            continue
-
-        event_id = event.get("eventId")
-
-        if type(event_id) is not str or len(event_id) > 256:
-            raise ExecutionError("invalid_aws_response")
-
-        items.append(
-            {"event_id": event_id, "timestamp": timestamp, "message": message}
+        return Evidence(
+            data, references, self.truncated or limited, self.collection
         )
-
-    data, partial = fit_items("events", items[:maximum], action.max_bytes)
-
-    return data, partial or filtered or len(items) > maximum or bool(
-        response.get("nextToken")
-    )
-
-
-def bounded_result(
-    action: ApprovedAction, response: object, body: bytes | None
-) -> tuple[dict[str, Any], bool]:
-    if type(response) is not dict:
-        raise ExecutionError("invalid_aws_response")
-
-    if action.operation == "DescribeResources":
-        if len(encode(response)) > action.max_bytes:
-            raise ExecutionError("response_budget_too_small")
-        return response, False
-    if action.operation == "GetObject":
-        return object_result(action, response, body)
-    if action.operation == "ListObjectsV2":
-        return listing_result(action, response)
-    if action.operation == "LookupEvents":
-        items, incomplete = cloudtrail_events(action, response)
-        maximum = integer_parameter(action, "MaxResults", 1)
-        data, partial = fit_items("events", items[:maximum], action.max_bytes)
-
-        return data, incomplete or partial or len(items) > maximum
-
-    if action.operation == "FilterLogEvents":
-        return logs_result(action, response)
-
-    raise ExecutionError("invalid_execution_plan")

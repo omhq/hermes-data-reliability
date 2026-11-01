@@ -2,75 +2,10 @@ import copy
 from typing import TYPE_CHECKING, Any
 
 from .models import PolicyDenied
-from .policy import fields, require
-from .wire import encode
+from .validation import fields, require
 
 if TYPE_CHECKING:
     from .executor import Session
-    from .models import ApprovedAction
-
-
-def references_for(
-    action: ApprovedAction, data: dict[str, Any], truncated: bool
-) -> tuple[list[dict[str, str]], bool]:
-    """Absence requires an exact, complete listing, never a failed read."""
-    parameters = action.parameters
-    references = []
-
-    if action.operation == "GetObject":
-        references.append(
-            {
-                "reference": f"s3://{parameters['Bucket']}/{parameters['Key']}",
-                "observation": "object_sample",
-            }
-        )
-    elif action.operation == "ListObjectsV2":
-        for item in data["objects"]:
-            references.append(
-                {
-                    "reference": f"s3://{parameters['Bucket']}/{item['key']}",
-                    "observation": "object_listed",
-                }
-            )
-
-        if action.exact_key and not references and not truncated:
-            references.append(
-                {
-                    "reference": (
-                        f"s3://{parameters['Bucket']}/{action.exact_key}"
-                    ),
-                    "observation": "object_absent",
-                }
-            )
-    elif action.operation == "FilterLogEvents":
-        references = [
-            {
-                "reference": "cloudwatch-event:" + item["event_id"],
-                "observation": "log_event",
-            }
-            for item in data["events"]
-        ]
-    elif action.operation == "LookupEvents":
-        references = [
-            {
-                "reference": (
-                    f"cloudtrail-event:{action.account_id}:{action.region}:"
-                    + item["event_id"]
-                ),
-                "observation": "cloudtrail_event",
-            }
-            for item in data["events"]
-        ]
-
-    bounded = []
-
-    for reference in references:
-        if len(bounded) >= 20 or len(encode(bounded + [reference])) > 4096:
-            break
-
-        bounded.append(reference)
-
-    return bounded, len(bounded) != len(references)
 
 
 def select_receipts(session: Session, citations: object) -> dict[str, Any]:

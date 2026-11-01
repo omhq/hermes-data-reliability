@@ -1,10 +1,6 @@
-import re
 import threading
-import time
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable, Literal
 
-from .cloudtrail import utc_timestamp
 from .models import (
     ApprovedAction,
     IncidentContext,
@@ -12,114 +8,56 @@ from .models import (
     PolicyLimits,
     ResourceContext,
 )
+from .services.base import Scope
+from .validation import (
+    fields,
+    integer,
+    require,
+    wall_time_ms,
+)
 
 if TYPE_CHECKING:
     from .models import ResolvedRead
+    from .registry import ConfiguredTools
 
 
-TOOLS = frozenset(
-    {
-        "search_run_logs",
-        "list_run_objects",
-        "read_run_object",
-        "lookup_cloudtrail_events",
-    }
-)
-
-
-def require(condition: bool, code: str) -> None:
-    if not condition:
-        raise PolicyDenied(code)
-
-
-def integer(value: object, minimum: int, maximum: int, code: str) -> int:
-    # bool is a subclass of int. It is not a valid count or timestamp.
-    if type(value) is not int or not minimum <= value <= maximum:
-        raise PolicyDenied(code)
-
-    return value
-
-
-def fields(
-    value: object, required: set[str], optional: set[str]
-) -> dict[str, Any]:
-    """Return validated request fields without coercing untrusted values."""
-    if type(value) is not dict:
-        raise PolicyDenied("invalid_arguments")
-
-    require(all(type(key) is str for key in value), "invalid_arguments")
-    require(required <= value.keys(), "missing_arguments")
-    require(value.keys() <= required | optional, "unexpected_arguments")
-    return value
-
-
-def validate_context(context: IncidentContext, limits: PolicyLimits) -> None:
-    require(type(context) is IncidentContext, "invalid_context")
-
-    for value, pattern in (
-        (context.account_id, r"[0-9]{12}"),
-        (context.region, r"[a-z]{2}(?:-[a-z]+)+-[0-9]+"),
-        (context.bucket, r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]"),
-        (context.log_group, r"[./A-Za-z0-9_#-]{1,512}"),
-        (context.run_id, r"[a-f0-9]{24}"),
-    ):
-        require(
-            type(value) is str and re.fullmatch(pattern, value) is not None,
-            "invalid_context",
-        )
-
-    require(type(context.attempt_ids) is tuple, "invalid_context")
-    require(
-        all(
-            type(value) is str and re.fullmatch(r"[A-Za-z0-9-]{1,80}", value)
-            for value in context.attempt_ids
-        ),
-        "invalid_context",
-    )
-
-    for value in (context.incident_time_ms, context.expires_at_ms):
-        require(type(value) is int and value > 0, "invalid_context")
-
-    require(type(limits) is PolicyLimits, "invalid_limits")
-
-    for value in vars(limits).values():
-        require(type(value) is int and value > 0, "invalid_limits")
-
-    require(
-        limits.default_bytes <= limits.max_bytes <= limits.total_bytes,
-        "invalid_limits",
-    )
-
-
-def wall_time_ms() -> int:
-    return time.time_ns() // 1_000_000
-
-
-class ReadPolicy[Context: IncidentContext | ResourceContext](ABC):
-    """Share authorization locking and budgets across trusted context types.
-
-    Authorized calls reserve their full byte allowance even when AWS fails
-    or returns less data. Process-local counters and session tokens expire
-    with the executor process rather than silently renewing on restart.
-    """
-
+class ReadPolicy[Context: IncidentContext | ResourceContext]:
     def _initialize(
         self,
         context: Context,
         limits: PolicyLimits,
         clock: Callable[[], int],
-        cloudtrail_resources: tuple[str, ...] = (),
+        providers: ConfiguredTools | None = None,
+        *,
+        mode: Literal["run", "log", "resources"] = "resources",
     ) -> None:
+        require(
+            type(context) in (IncidentContext, ResourceContext),
+            "invalid_context",
+        )
+        require(type(limits) is PolicyLimits, "invalid_limits")
+        context.validate()
+        limits.validate()
         self._context = context
         self._limits = limits
         self._clock = clock
-        self._cloudtrail_resources = cloudtrail_resources
+        self.providers: ConfiguredTools | None = None
+        self.mode = mode
         self._calls = 0
         self._reserved_bytes = 0
         self._lock = threading.Lock()
 
+        if providers is not None:
+            self.bind(providers)
+
+    def bind(self, providers: ConfiguredTools) -> None:
+        providers.validate_scope(self.scope())
+        self.providers = providers
+
+    def scope(self) -> Scope:
+        return Scope(self._context, self._limits, self.mode)
+
     def authorize(self, request: object) -> ApprovedAction:
-        """Deny invalid requests or policy failures before any execution."""
         with self._lock:
             try:
                 return self._authorize(request)
@@ -128,66 +66,33 @@ class ReadPolicy[Context: IncidentContext | ResourceContext](ABC):
             except Exception:
                 raise PolicyDenied("policy_error") from None
 
-    @abstractmethod
     def _authorize(self, request: object) -> ApprovedAction:
-        """Resolve only the tools supported by this policy's context."""
-
-    def _cloudtrail(
-        self, arguments: dict[str, Any], start: int, end: int, now: int
-    ) -> ResolvedRead:
-        fields(
-            arguments,
-            {"resource_name"},
-            {"start_time_ms", "end_time_ms", "max_events", "max_bytes"},
-        )
-        resource = arguments["resource_name"]
-        require(
-            type(resource) is str and resource in self._cloudtrail_resources,
-            "resource_not_allowed",
-        )
-
-        start = max(start, now - 90 * 86400 * 1000, 1)
-        end = min(end, now)
-        requested_start = integer(
-            arguments.get("start_time_ms", start),
-            start,
-            end - 1,
-            "outside_cloudtrail_window",
-        )
-        requested_end = integer(
-            arguments.get("end_time_ms", end),
-            requested_start + 1,
-            end,
-            "outside_cloudtrail_window",
-        )
-        count = integer(
-            arguments.get("max_events", 20),
+        now = self._clock()
+        require(type(now) is int and now > 0, "invalid_clock")
+        require(now < self._context.expires_at_ms, "context_expired")
+        request = fields(request, {"tool", "arguments"}, set())
+        require(type(request["tool"]) is str, "unknown_tool")
+        arguments = request["arguments"]
+        require(type(arguments) is dict, "invalid_arguments")
+        maximum = integer(
+            arguments.get("max_bytes", self._limits.default_bytes),
             1,
-            min(50, self._limits.max_events),
-            "invalid_event_limit",
+            self._limits.max_bytes,
+            "invalid_byte_limit",
         )
+        providers = self.providers
+        if providers is None:
+            raise PolicyDenied("unconfigured_tools")
 
-        return (
-            "cloudtrail",
-            "LookupEvents",
-            {
-                "LookupAttributes": [
-                    {
-                        "AttributeKey": "ResourceName",
-                        "AttributeValue": resource,
-                    }
-                ],
-                "StartTime": utc_timestamp(requested_start),
-                "EndTime": utc_timestamp(requested_end),
-                "MaxResults": count,
-            },
-            None,
-            None,
+        resolved = providers.authorize(
+            self.scope(), request["tool"], arguments, maximum, now
         )
+        return self._reserve(request["tool"], resolved, maximum, now)
 
     def _reserve(
         self, tool: str, resolved: ResolvedRead, max_bytes: int, now: int
     ) -> ApprovedAction:
+        """Reserve the full allowance; failed reads remain charged."""
         context = self._context
         limits = self._limits
         service, operation, parameters, exact_key, key_prefix = resolved
@@ -222,197 +127,12 @@ class ReadPolicy[Context: IncidentContext | ResourceContext](ABC):
 
 
 class RequestPolicy(ReadPolicy[IncidentContext]):
-    """Authorize only one incident's objects, attempts, and log window."""
-
     def __init__(
         self,
         context: IncidentContext,
         limits: PolicyLimits = PolicyLimits(),
         clock: Callable[[], int] = wall_time_ms,
-        cloudtrail_resources: tuple[str, ...] = (),
+        providers: ConfiguredTools | None = None,
     ) -> None:
-        validate_context(context, limits)
-        self._initialize(context, limits, clock, cloudtrail_resources)
-
-    def _authorize(self, request: object) -> ApprovedAction:
-        now = self._clock()
-        require(type(now) is int and now > 0, "invalid_clock")
-
-        context = self._context
-        limits = self._limits
-
-        require(now < context.expires_at_ms, "context_expired")
-
-        request = fields(request, {"tool", "arguments"}, set())
-        tool = request["tool"]
-
-        require(type(tool) is str and tool in TOOLS, "unknown_tool")
-
-        arguments = request["arguments"]
-
-        require(type(arguments) is dict, "invalid_arguments")
-
-        if tool != "lookup_cloudtrail_events":
-            run_id = arguments.get("run_id")
-
-            require(type(run_id) is str, "invalid_arguments")
-            require(run_id == context.run_id, "wrong_incident")
-
-        max_bytes = integer(
-            arguments.get("max_bytes", limits.default_bytes),
-            1,
-            limits.max_bytes,
-            "invalid_byte_limit",
-        )
-        service, operation, parameters, exact_key, key_prefix = self._resolve(
-            tool, arguments
-        )
-
-        return self._reserve(
-            tool,
-            (service, operation, parameters, exact_key, key_prefix),
-            max_bytes,
-            now,
-        )
-
-    def _resolve(self, tool: str, arguments: dict[str, Any]) -> ResolvedRead:
-        if tool == "lookup_cloudtrail_events":
-            window = self._limits.log_window_seconds * 1000
-            return self._cloudtrail(
-                arguments,
-                self._context.incident_time_ms - window,
-                self._context.incident_time_ms + window,
-                self._clock(),
-            )
-        if tool == "search_run_logs":
-            return self._logs(arguments)
-        if tool == "list_run_objects":
-            return self._listing(arguments)
-
-        return self._object(arguments)
-
-    def _logs(self, arguments: dict[str, Any]) -> ResolvedRead:
-        fields(
-            arguments,
-            {"run_id"},
-            {"before_seconds", "after_seconds", "max_events", "max_bytes"},
-        )
-
-        context = self._context
-        limits = self._limits
-        before = integer(
-            arguments.get(
-                "before_seconds", min(300, limits.log_window_seconds)
-            ),
-            0,
-            limits.log_window_seconds,
-            "outside_log_window",
-        )
-        after = integer(
-            arguments.get(
-                "after_seconds", min(300, limits.log_window_seconds)
-            ),
-            0,
-            limits.log_window_seconds,
-            "outside_log_window",
-        )
-
-        require(before + after > 0, "empty_log_window")
-
-        events = integer(
-            arguments.get("max_events", min(50, limits.max_events)),
-            1,
-            limits.max_events,
-            "invalid_event_limit",
-        )
-
-        return (
-            "logs",
-            "FilterLogEvents",
-            {
-                "logGroupName": context.log_group,
-                "startTime": max(0, context.incident_time_ms - before * 1000),
-                "endTime": context.incident_time_ms + after * 1000,
-                "filterPattern": '{ $.run_id = "' + context.run_id + '" }',
-                "limit": events,
-                "unmask": False,
-            },
-            None,
-            None,
-        )
-
-    def _listing(self, arguments: dict[str, Any]) -> ResolvedRead:
-        fields(arguments, {"run_id", "kind"}, {"max_keys", "max_bytes"})
-
-        context = self._context
-        kind = arguments["kind"]
-
-        require(
-            type(kind) is str and kind in {"input", "output", "runs"},
-            "invalid_object_kind",
-        )
-
-        count = integer(
-            arguments.get("max_keys", self._limits.max_keys),
-            1,
-            self._limits.max_keys,
-            "invalid_key_limit",
-        )
-        exact_key = None
-        key_prefix = None
-
-        if kind == "runs":
-            prefix = f"runs/{context.run_id}/"
-            key_prefix = prefix
-        else:
-            prefix = f"{kind}/{context.run_id}.json"
-            exact_key = prefix
-
-        return (
-            "s3",
-            "ListObjectsV2",
-            {
-                "Bucket": context.bucket,
-                "Prefix": prefix,
-                "MaxKeys": count,
-            },
-            exact_key,
-            key_prefix,
-        )
-
-    def _object(self, arguments: dict[str, Any]) -> ResolvedRead:
-        fields(arguments, {"run_id", "kind"}, {"attempt_id", "max_bytes"})
-
-        context = self._context
-        kind = arguments["kind"]
-
-        require(
-            type(kind) is str and kind in {"input", "output", "log"},
-            "invalid_object_kind",
-        )
-
-        if kind == "log":
-            attempt = arguments.get("attempt_id")
-            require(
-                type(attempt) is str and attempt in context.attempt_ids,
-                "unapproved_attempt",
-            )
-
-            key = f"runs/{context.run_id}/{attempt}.json"
-        else:
-            require("attempt_id" not in arguments, "unexpected_arguments")
-            key = f"{kind}/{context.run_id}.json"
-
-        max_bytes = arguments.get("max_bytes", self._limits.default_bytes)
-
-        return (
-            "s3",
-            "GetObject",
-            {
-                "Bucket": context.bucket,
-                "Key": key,
-                "Range": f"bytes=0-{max_bytes - 1}",
-            },
-            key,
-            None,
-        )
+        require(type(context) is IncidentContext, "invalid_context")
+        self._initialize(context, limits, clock, providers, mode="run")

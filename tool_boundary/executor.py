@@ -9,18 +9,19 @@ from _thread import LockType
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
-from .catalog import ALL_TOOLS, ToolPackages
-from .log_policy import LogPolicy, log_context
+from .loader import ContextLoader, load_tools
 from .models import IncidentContext, PolicyDenied, ResourceContext
-from .policy import RequestPolicy, fields, integer, require, wall_time_ms
+from .policy import RequestPolicy
 from .process import Deadline
-from .receipts import references_for, select_receipts
-from .resource_policy import ResourcePolicy, profile_context
-from .results import bounded_result
+from .receipts import select_receipts
+from .registered import REGISTRY
+from .registry import ToolRegistry
+from .resource_policy import ResourcePolicy
+from .validation import fields, require, wall_time_ms
 from .wire import ExecutionError, encode
 
 if TYPE_CHECKING:
-    from .contracts import AuditSink, ReadBackend
+    from .contracts import AuditSink, ReadBackend, ToolExtension
 
 
 @dataclass
@@ -51,94 +52,25 @@ class Executor:
         backend: ReadBackend,
         audit: AuditSink,
         clock: Callable[[], int] = wall_time_ms,
+        extension: ToolExtension | None = None,
+        registry: ToolRegistry = REGISTRY,
     ) -> None:
         self.config = copy.deepcopy(config)
-        self.packages = ToolPackages.from_executor_config(config)
-        self.cloudtrail_resources = (
-            self.packages.cloudtrail_resources
-            if "hermes-cloudtrail" in self.packages.enabled
-            else ()
-        )
+        self.providers = load_tools(self.config, extension, registry=registry)
+        self.packages = self.providers.selection
         self.backend = backend
         self.audit = audit
         self.clock = clock
+        self.extension = extension
+        self.contexts = ContextLoader(
+            self.config, self.providers, self.clock, extension
+        )
         self.sessions: dict[str, Session] = {}
         self.lock = threading.Lock()
 
     def register(self, request: object, owner_uid: int = 0) -> dict[str, Any]:
-        if type(request) is dict and "expected_source" in request:
-            expected = request["expected_source"]
-
-            fields(expected, {"account_id", "region", "log_group"}, set())
-            require(
-                all(expected[key] == self.config[key] for key in expected),
-                "source_scope_changed",
-            )
-
-            request = {
-                key: value
-                for key, value in request.items()
-                if key != "expected_source"
-            }
-
-        if type(request) is dict and "observation_id" in request:
-            context, ttl = log_context(self.config, request, self.clock())
-            return self._store(
-                LogPolicy(
-                    context,
-                    request["observation_id"],
-                    clock=self.clock,
-                    cloudtrail_resources=self.cloudtrail_resources,
-                ),
-                context,
-                ttl,
-                owner_uid,
-            )
-
-        if type(request) is dict and "profile" in request:
-            require(owner_uid == 0, "resource_scope_forbidden")
-            context, ttl = profile_context(self.config, request, self.clock())
-            return self._store(
-                ResourcePolicy(
-                    context,
-                    clock=self.clock,
-                    cloudtrail_resources=self.cloudtrail_resources,
-                ),
-                context,
-                ttl,
-                owner_uid,
-            )
-
-        request = fields(
-            request,
-            {"run_id", "attempt_ids", "incident_time_ms"},
-            {"ttl_seconds"},
-        )
-
-        attempts = request["attempt_ids"]
-
-        require(
-            type(attempts) is list and len(attempts) <= 20, "invalid_context"
-        )
-
-        ttl = integer(request.get("ttl_seconds", 300), 1, 300, "invalid_ttl")
-        context = IncidentContext(
-            account_id=self.config["account_id"],
-            region=self.config["region"],
-            bucket=self.config["bucket"],
-            log_group=self.config["log_group"],
-            run_id=request["run_id"],
-            attempt_ids=tuple(attempts),
-            incident_time_ms=request["incident_time_ms"],
-            expires_at_ms=self.clock() + ttl * 1000,
-        )
-
-        policy = RequestPolicy(
-            context,
-            clock=self.clock,
-            cloudtrail_resources=self.cloudtrail_resources,
-        )
-        return self._store(policy, context, ttl, owner_uid)
+        grant = self.contexts.open(request, owner_uid)
+        return self._store(grant.policy, grant.context, grant.ttl, owner_uid)
 
     def _store(
         self,
@@ -147,6 +79,8 @@ class Executor:
         ttl: int,
         owner_uid: int,
     ) -> dict[str, Any]:
+        policy.bind(self.providers)
+
         with self.lock:
             for token, session in list(self.sessions.items()):
                 if self._expired(session):
@@ -277,8 +211,7 @@ class Executor:
                 )
                 tool = request["tool"]
 
-                if type(tool) is str and tool in ALL_TOOLS:
-                    require(tool in self.packages.tools, "tool_disabled")
+                provider = self.providers.tool(tool)
 
                 action = session.policy.authorize(request)
 
@@ -309,30 +242,16 @@ class Executor:
 
                 deadline.remaining()
 
-                if action.operation == "DescribeResources":
-                    if not isinstance(session.policy, ResourcePolicy):
-                        raise ExecutionError("invalid_execution_plan")
-
-                    response = session.policy.describe_resources(action.tool)
-                    response["enabled_tools"] = sorted(self.packages.tools)
-                    body = None
-                else:
-                    if (
-                        not session.environment
-                        or time.monotonic() >= session.credentials_until
-                    ):
-                        session.environment = self.backend.assume(deadline)
-                        # Refresh credentials before their 15-minute expiry;
-                        # the policy and its reservations remain unchanged.
-                        session.credentials_until = time.monotonic() + 840
-
-                    deadline.remaining()
-
-                    response, body = self.backend.execute(
-                        action, session.environment, deadline
-                    )
-
-                data, truncated = bounded_result(action, response, body)
+                evidence = provider.read(
+                    session,
+                    action,
+                    self.backend,
+                    deadline,
+                    self.clock() // 1000,
+                ).bounded()
+                data = evidence.data
+                truncated = evidence.truncated
+                references = evidence.references
 
                 deadline.remaining()
 
@@ -342,7 +261,6 @@ class Executor:
                     raise ExecutionError("response_budget_exceeded")
 
                 digest = hashlib.sha256(encoded).hexdigest()
-                references, limited = references_for(action, data, truncated)
                 result = {
                     "ok": True,
                     "request_id": request_id,
@@ -352,7 +270,7 @@ class Executor:
                     "data": data,
                     "data_bytes": len(encoded),
                     "sha256": digest,
-                    "truncated": bool(truncated or limited),
+                    "truncated": truncated,
                     "untrusted_evidence": True,
                     "references": references,
                 }

@@ -1,79 +1,31 @@
 import re
 from typing import TYPE_CHECKING, Any, Callable
 
-from .models import IncidentContext, PolicyLimits, ResourceContext
-from .policy import fields, integer, require, validate_context, wall_time_ms
+from .models import PolicyLimits, ResourceContext
 from .resource_policy import ResourcePolicy
+from .validation import (
+    fields,
+    integer,
+    require,
+    wall_time_ms,
+)
 
 if TYPE_CHECKING:
-    from .models import ApprovedAction
+    from .registry import ConfiguredTools
 
 
 class LogPolicy(ResourcePolicy):
-    """Authorize the generic log tool within one host-approved time range."""
-
     def __init__(
         self,
         context: ResourceContext,
         incident_id: str,
         clock: Callable[[], int] = wall_time_ms,
-        cloudtrail_resources: tuple[str, ...] = (),
+        providers: ConfiguredTools | None = None,
     ) -> None:
         limits = PolicyLimits()
-
-        validate_context(
-            IncidentContext(
-                context.account_id,
-                context.region,
-                context.bucket,
-                context.log_group,
-                "0" * 24,
-                (),
-                context.start_time_ms,
-                context.expires_at_ms,
-            ),
-            limits,
-        )
-
+        require(type(context) is ResourceContext, "invalid_context")
         self.incident_id = incident_id
-        self._initialize(context, limits, clock, cloudtrail_resources)
-
-    def _authorize(self, request: object) -> ApprovedAction:
-        now = self._clock()
-
-        require(type(now) is int and now > 0, "invalid_clock")
-        require(now < self._context.expires_at_ms, "context_expired")
-
-        request = fields(request, {"tool", "arguments"}, set())
-        require(
-            type(request["tool"]) is str
-            and request["tool"]
-            in {"search_log_events", "lookup_cloudtrail_events"},
-            "unknown_tool",
-        )
-
-        arguments = request["arguments"]
-
-        require(type(arguments) is dict, "invalid_arguments")
-
-        maximum = integer(
-            arguments.get("max_bytes", self._limits.default_bytes),
-            1,
-            self._limits.max_bytes,
-            "invalid_byte_limit",
-        )
-
-        if request["tool"] == "lookup_cloudtrail_events":
-            resolved = self._cloudtrail(
-                arguments,
-                self._context.start_time_ms,
-                self._context.end_time_ms,
-                now,
-            )
-        else:
-            resolved = self._logs(arguments, now)
-
-        return self._reserve(request["tool"], resolved, maximum, now)
+        self._initialize(context, limits, clock, providers, mode="log")
 
 
 def log_context(

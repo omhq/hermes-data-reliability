@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 MAX_REQUEST_BYTES = 8192
+MAX_RESPONSE_BYTES = 270336
 
 
 class ExecutionError(RuntimeError):
@@ -120,7 +121,7 @@ def call(path: str | Path, request: dict[str, Any]) -> dict[str, Any]:
             set_timeout(connection, end, "response_timeout")
             chunk = connection.recv(65536)
 
-            if not chunk or len(response) + len(chunk) > 270_336:
+            if not chunk or len(response) + len(chunk) > MAX_RESPONSE_BYTES:
                 raise ExecutionError("invalid_response")
 
             response.extend(chunk)
