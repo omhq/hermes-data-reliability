@@ -1,11 +1,12 @@
 import json
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from investigator.json_input import decode
 
 if TYPE_CHECKING:
-    from investigator.runtime.sessions import InvestigationSession
+    from investigator.runtime.evidence import EvidenceVerifier
 
 
 TEXT_FIELDS = (
@@ -17,149 +18,106 @@ TEXT_FIELDS = (
 )
 
 
-def validate_finding(
-    value: object, run_id: str, bucket: str, logs_only: bool = False
-) -> dict[str, Any]:
-    if type(value) is not dict or value.get("run_id") != run_id:
-        raise ValueError("finding run_id mismatch")
-    if set(value) != {"run_id", "evidence", *TEXT_FIELDS}:
-        raise ValueError("unexpected finding fields")
+@dataclass(frozen=True)
+class Finding:
+    incident_id: str
+    text: dict[str, str]
+    citations: list[dict[str, str]]
 
-    for key in TEXT_FIELDS:
-        if type(value.get(key)) is not str or not 1 <= len(value[key]) <= 8000:
-            raise ValueError("missing or oversized finding field")
+    @classmethod
+    def from_value(cls, value: object, incident_id: str) -> Finding:
+        """Validate report structure; references are opaque tool-issued IDs."""
+        if type(value) is not dict or value.get("run_id") != incident_id:
+            raise ValueError("finding run_id mismatch")
+        if set(value) != {"run_id", "evidence", *TEXT_FIELDS}:
+            raise ValueError("unexpected finding fields")
 
-    citations = value["evidence"]
+        text: dict[str, str] = {}
 
-    if type(citations) is not list or not 1 <= len(citations) <= 12:
-        raise ValueError("finding needs evidence references")
+        for key in TEXT_FIELDS:
+            field = value[key]
 
-    seen = set()
+            if type(field) is not str or not 1 <= len(field) <= 8000:
+                raise ValueError("missing or oversized finding field")
 
-    for citation in citations:
-        if type(citation) is not dict or set(citation) != {
-            "evidence_id",
-            "reference",
-        }:
-            raise ValueError("citation needs an evidence ID and reference")
+            text[key] = field
 
-        evidence_id = citation["evidence_id"]
-        reference = citation["reference"]
+        evidence = value["evidence"]
 
-        if (
-            type(evidence_id) is not str
-            or not re.fullmatch(r"[a-f0-9]{32}", evidence_id)
-            or type(reference) is not str
-            or not 1 <= len(reference) <= 2048
-        ):
-            raise ValueError("invalid evidence citation")
-        if (evidence_id, reference) in seen:
-            raise ValueError("duplicate evidence citation")
+        if type(evidence) is not list or not 1 <= len(evidence) <= 12:
+            raise ValueError("finding needs evidence references")
 
-        seen.add((evidence_id, reference))
+        citations: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
 
-        if re.fullmatch(
-            r"cloudtrail-event:[0-9]{12}:[a-z]{2}(?:-[a-z]+)+-[0-9]+:"
-            r"[a-fA-F0-9-]{36}",
-            reference,
-        ):
-            # The host resolves this reference against the session receipt;
-            # a model-supplied event ID alone is never trusted evidence.
-            continue
+        for citation in evidence:
+            if type(citation) is not dict or set(citation) != {
+                "evidence_id",
+                "reference",
+            }:
+                raise ValueError("citation needs an evidence ID and reference")
 
-        if logs_only:
-            if not reference.startswith("cloudwatch-event:"):
-                raise ValueError("evidence outside log scope")
+            evidence_id = citation["evidence_id"]
+            reference = citation["reference"]
 
-            continue
+            if (
+                type(evidence_id) is not str
+                or not re.fullmatch(r"[a-f0-9]{32}", evidence_id)
+                or type(reference) is not str
+                or not 1 <= len(reference) <= 2048
+            ):
+                raise ValueError("invalid evidence citation")
+            if (evidence_id, reference) in seen:
+                raise ValueError("duplicate evidence citation")
 
-        allowed = (
-            f"s3://{bucket}/input/{run_id}.json",
-            f"s3://{bucket}/output/{run_id}.json",
-        )
-
-        if not (
-            reference in allowed
-            or re.fullmatch(
-                r"s3://"
-                + re.escape(bucket)
-                + r"/runs/"
-                + run_id
-                + r"/[a-zA-Z0-9-]+\.json",
-                reference,
+            seen.add((evidence_id, reference))
+            citations.append(
+                {"evidence_id": evidence_id, "reference": reference}
             )
-            or reference.startswith("cloudwatch-event:")
-        ):
-            raise ValueError("evidence outside incident scope")
 
-    return value
+        return cls(incident_id, text, citations)
 
 
-def bind_receipts(
-    finding: dict[str, Any], session: InvestigationSession
-) -> dict[str, Any]:
-    verified = session.evidence(finding["evidence"])
-    receipts = verified["receipts"]
+class FindingParser:
+    def __init__(self, verifier: EvidenceVerifier) -> None:
+        self.verifier = verifier
 
-    if len(receipts) != len(finding["evidence"]):
-        raise ValueError("incomplete evidence verification")
+    def parse(self, stdout: str, incident_id: str) -> dict[str, Any]:
+        results: list[dict[str, Any]] = []
 
-    for citation, receipt in zip(finding["evidence"], receipts):
+        for line in stdout.splitlines():
+            try:
+                item = json.loads(line)
+            except ValueError:
+                continue
+
+            if isinstance(item, dict) and item.get("type") == "result":
+                results.append(item)
+
         if (
-            any(receipt.get(key) != value for key, value in citation.items())
-            or receipt.get("session_id") != session.session_id
-            or receipt.get("run_id") != finding["run_id"]
-            or not re.fullmatch(r"[a-f0-9]{64}", receipt.get("sha256", ""))
-            or type(receipt.get("truncated")) is not bool
-            or type(receipt.get("source")) is not dict
-            or type(receipt.get("observed_at_ms")) is not int
-            or type(receipt.get("data_bytes")) is not int
+            len(results) != 1
+            or results[0].get("exit_code") != 0
+            or results[0].get("error")
+            or type(results[0].get("text")) is not str
         ):
-            raise ValueError("evidence provenance mismatch")
+            raise ValueError("missing or failed Hermes result")
 
-    return {
-        **finding,
-        "evidence": receipts,
-        "evidence_warnings": verified["limitations"],
-    }
+        result = results[0]
+        answer = result["text"].strip()
 
+        if answer.startswith("```json\n") and answer.endswith("```"):
+            answer = answer[8:-3].strip()
 
-def parse_result(
-    stdout: str,
-    run_id: str,
-    bucket: str,
-    session: InvestigationSession,
-    logs_only: bool = False,
-) -> dict[str, Any]:
-    results = []
+        finding = Finding.from_value(
+            decode(answer.encode("utf-8")), incident_id
+        )
+        verified = self.verifier.verify(incident_id, finding.citations)
 
-    for line in stdout.splitlines():
-        try:
-            item = json.loads(line)
-        except ValueError:
-            continue
-
-        if isinstance(item, dict) and item.get("type") == "result":
-            results.append(item)
-
-    if (
-        len(results) != 1
-        or results[0].get("exit_code") != 0
-        or results[0].get("error")
-        or type(results[0].get("text")) is not str
-    ):
-        raise ValueError("missing or failed Hermes result")
-
-    answer = results[0]["text"].strip()
-
-    if answer.startswith("```json\n") and answer.endswith("```"):
-        answer = answer[8:-3].strip()
-
-    finding = validate_finding(
-        decode(answer.encode("utf-8")), run_id, bucket, logs_only=logs_only
-    )
-    finding = bind_receipts(finding, session)
-    finding["duration_ms"] = results[0].get("duration_ms")
-    finding["tokens"] = results[0].get("tokens")
-
-    return finding
+        return {
+            "run_id": finding.incident_id,
+            **finding.text,
+            "evidence": verified.receipts,
+            "evidence_warnings": verified.limitations,
+            "duration_ms": result.get("duration_ms"),
+            "tokens": result.get("tokens"),
+        }

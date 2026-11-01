@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import Any
 
 from incidents.specification import validate_investigation
-from investigator.runtime.findings import parse_result
+from investigator.runtime.evidence import SessionEvidenceVerifier
+from investigator.runtime.findings import FindingParser
 from investigator.runtime.launch import run_once, stop_on_disconnect
 from investigator.runtime.sessions import INCIDENT_SOCKET, InvestigationSession
 from tool_boundary.catalog import ToolPackages
@@ -73,8 +74,8 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
         ) as session,
     ):
         stdout = run_once(session, prompt)
-        finding = parse_result(
-            stdout, row["id"], config["bucket"], session, health=True
+        finding = FindingParser(SessionEvidenceVerifier(session)).parse(
+            stdout, row["id"]
         )
         session.check()
         return finding

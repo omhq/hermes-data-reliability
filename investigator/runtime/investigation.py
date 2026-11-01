@@ -2,13 +2,19 @@ import json
 from typing import Any
 
 from incidents.specification import validate_investigation
-from investigator.runtime.findings import parse_result
+from investigator.capabilities.pipeline_health.investigation import (
+    investigate as investigate_health,
+)
+from investigator.runtime.evidence import SessionEvidenceVerifier
+from investigator.runtime.findings import FindingParser
 from investigator.runtime.launch import run_once, stop_on_disconnect
 from investigator.runtime.sessions import (
     INCIDENT_SOCKET,
     InvestigationSession,
 )
 from tool_boundary.catalog import ToolPackages
+from tool_boundary.loader import load_tools
+from tool_boundary.services.cloudwatch import CloudWatchProvider
 
 
 def incident_specification(row: dict[str, Any]) -> dict[str, Any]:
@@ -34,6 +40,9 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     if row["account_id"] != config["account_id"]:
         raise ValueError("Incident AWS account is no longer authorized")
 
+    if row["kind"] == "health":
+        return investigate_health(row, config)
+
     incident = json.loads(row["evidence"])
 
     if row["kind"] not in {"run", "log"}:
@@ -44,9 +53,10 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     event = observation["event"]
 
     if any(
-        observation[key] != config[key]
-        for key in ("account_id", "region", "log_group")
-    ):
+        observation[key] != config[key] for key in ("account_id", "region")
+    ) or observation[
+        "log_group"
+    ] not in CloudWatchProvider.collection_log_groups(config):
         raise ValueError("Incident source is no longer authorized")
 
     if logs_only:
@@ -55,23 +65,17 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
             "incident_time_ms": observation["event"]["timestamp"],
             "ttl_seconds": 300,
         }
-        tools = ["search_log_events"]
     else:
         specification = incident_specification(row)
-        tools = ["search_run_logs", "list_run_objects", "read_run_object"]
 
     packages = ToolPackages.from_executor_config(config)
-
-    if "hermes-cloudtrail" in packages.enabled:
-        tools.append("lookup_cloudtrail_events")
-
-    tools = [tool for tool in tools if tool in packages.tools]
+    tools = sorted(packages.tools_for("log" if logs_only else "run"))
 
     if not tools:
         raise ValueError("No enabled tool package supports this investigation")
 
     specification["expected_source"] = {
-        key: config[key] for key in ("account_id", "region", "log_group")
+        key: observation[key] for key in ("account_id", "region", "log_group")
     }
 
     settings = row["definition"]["investigation"]
@@ -86,9 +90,7 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
                 "incident_id": row["id"],
                 "objective": settings["objective"],
                 "authorized_tools": tools,
-                "cloudtrail_resource_names": list(
-                    packages.cloudtrail_resources
-                ),
+                "configured_resources": load_tools(config).describe(),
                 "scope": specification,
                 "matched_rules": [
                     {
@@ -105,7 +107,7 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
             {
                 "bucket": config["bucket"],
                 "region": config["region"],
-                "log_group": config["log_group"],
+                "log_group": observation["log_group"],
                 "incident": {
                     "event_reference": "cloudwatch-event:" + event["eventId"],
                     "message_sample": event["message"][:1000],
@@ -123,8 +125,8 @@ def investigate(row: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
         ) as session,
     ):
         stdout = run_once(session, prompt)
-        finding = parse_result(
-            stdout, row["id"], config["bucket"], session, logs_only=logs_only
+        finding = FindingParser(SessionEvidenceVerifier(session)).parse(
+            stdout, row["id"]
         )
 
         session.check()
