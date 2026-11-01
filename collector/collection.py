@@ -1,193 +1,171 @@
 import sqlite3
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any
 
-from .aws import AwsCallError
-from .cloudwatch import MAX_PAGES, MAX_WINDOW_MS
-from .definition import duration
-from .matching import Matcher, MatchError
-from .observation_store import record_matches, source_key
+from observations import store
+from observations.models import Feed, Reader
 
-if TYPE_CHECKING:
-    from collector.cloudwatch import CloudWatchReader
+from .execution import CollectionError
+
+MAX_PAGES = 5
+MAX_WINDOW_MS = 2 * 3600 * 1000
 
 
 def collect_source(
-    db: sqlite3.Connection,
-    source_id: str,
-    source: dict[str, Any],
-    reader: CloudWatchReader,
-    now: int,
-    *,
-    account_id: str,
-    matcher_factory: Callable[[dict[str, dict[str, Any]]], Matcher] = Matcher,
+    database: sqlite3.Connection, feed: Feed, reader: Reader, now: int
 ) -> dict[str, Any]:
-    """Advance only past pages whose evaluation and matches were committed."""
-    statistics = {"pages_read": 0, "events_read": 0, "message_bytes_read": 0}
-    key = source_key(source_id, source, account_id)
-    settings = source["collection"]
-    overlap = duration(settings["overlap"], 0, 3600) * 1000
-    interval = duration(settings["poll_interval"], 15, 3600)
-    initial = duration(settings["initial_lookback"], 1, 86400) * 1000
+    source = feed.source
+    key = source.key
+    statistics = {"pages_read": 0, "events_read": 0, "events_added": 0}
+    initial = max(0, now * 1000 - feed.lookback * 1000)
 
-    with db:
-        db.execute(
-            """
-            INSERT OR IGNORE INTO source_progress
-                (source_key, source_id, cursor_ms)
-            VALUES (?, ?, ?)
-            """,
-            (key, source_id, max(0, now * 1000 - initial)),
-        )
+    with database:
+        store.register(database, source, initial)
 
-    state = db.execute(
-        "SELECT * FROM source_progress WHERE source_key = ?", (key,)
+    state = database.execute(
+        "SELECT * FROM sources WHERE source_key = ?", (key,)
     ).fetchone()
-    boundary = db.execute(
-        "SELECT start_ms FROM collection_starts WHERE source_key = ?", (key,)
-    ).fetchone()
-    earliest_ms = boundary[0] if boundary is not None else 0
-    due = (
-        state["cursor_ms"] // 1000 + interval
-        if state["status"] == "ready"
-        else state["next_poll_at"]
-    )
+    initial = max(initial, state["retained_since_ms"])
+    earliest = database.execute(
+        "SELECT MIN(start_ms) FROM coverage WHERE source_key = ?", (key,)
+    ).fetchone()[0]
+    earliest = state["cursor_ms"] if earliest is None else earliest
 
-    if due > now:
-        if state["next_poll_at"] != due:
-            with db:
-                db.execute(
-                    """
-                    UPDATE source_progress SET next_poll_at = ?
-                    WHERE source_key = ?
-                    """,
+    if initial < earliest:
+        with database:
+            database.execute(
+                """
+                UPDATE sources SET cursor_ms = ?, window_start_ms = NULL,
+                    window_end_ms = NULL, continuation = NULL,
+                    next_poll_at = 0, status = 'pending'
+                WHERE source_key = ?
+                """,
+                (initial, key),
+            )
+
+        state = database.execute(
+            "SELECT * FROM sources WHERE source_key = ?", (key,)
+        ).fetchone()
+
+    if state["status"] == "ready":
+        due = state["cursor_ms"] // 1000 + feed.interval
+
+        if due != state["next_poll_at"]:
+            with database:
+                database.execute(
+                    "UPDATE sources SET next_poll_at = ? WHERE source_key = ?",
                     (due, key),
                 )
 
-            state = dict(state)
-            state["next_poll_at"] = due
+            state = database.execute(
+                "SELECT * FROM sources WHERE source_key = ?", (key,)
+            ).fetchone()
 
+    if state["next_poll_at"] > now:
         return {**dict(state), **statistics}
 
     try:
-        with matcher_factory(source["rules"]) as matcher:
-            for _ in range(MAX_PAGES):
-                state = db.execute(
-                    "SELECT * FROM source_progress WHERE source_key = ?",
-                    (key,),
-                ).fetchone()
+        for _ in range(MAX_PAGES):
+            state = database.execute(
+                "SELECT * FROM sources WHERE source_key = ?", (key,)
+            ).fetchone()
 
-                if state["window_end_ms"] is None:
-                    start = max(earliest_ms, state["cursor_ms"] - overlap)
+            if state["window_end_ms"] is None:
+                start = max(0, state["cursor_ms"] - feed.overlap * 1000)
 
-                    if state["status"] == "pending":
-                        start = state["cursor_ms"]
+                if state["status"] == "pending":
+                    start = state["cursor_ms"]
 
-                    end = min(now * 1000, start + MAX_WINDOW_MS)
-
-                    if end <= state["cursor_ms"]:
-                        end = min(
-                            now * 1000, state["cursor_ms"] + MAX_WINDOW_MS
-                        )
-
-                    with db:
-                        db.execute(
-                            """
-                            UPDATE source_progress
-                            SET window_start_ms = ?, window_end_ms = ?
-                            WHERE source_key = ?
-                            """,
-                            (start, end, key),
-                        )
-
-                    token = None
-                else:
-                    start = state["window_start_ms"]
-                    end = state["window_end_ms"]
-                    token = state["continuation"]
-
-                if end <= start:
-                    break
-
-                events, continuation = reader.read(source, start, end, token)
-                statistics["pages_read"] += 1
-                statistics["events_read"] += len(events)
-                statistics["message_bytes_read"] += sum(
-                    len(event["message"].encode("utf-8")) for event in events
+                end = min(
+                    now * 1000,
+                    max(start + MAX_WINDOW_MS, state["cursor_ms"] + 1),
                 )
 
-                if continuation is not None and continuation == token:
-                    raise AwsCallError("pagination_not_advancing")
+                with database:
+                    database.execute(
+                        """
+                        UPDATE sources SET window_start_ms = ?,
+                            window_end_ms = ? WHERE source_key = ?
+                        """,
+                        (start, end, key),
+                    )
 
-                matches = matcher.match([event["message"] for event in events])
+                token = None
+            else:
+                start = state["window_start_ms"]
+                end = state["window_end_ms"]
+                token = state["continuation"]
 
-                with db:
-                    for event, matched in zip(events, matches):
-                        record_matches(
-                            db,
-                            source_id,
-                            source,
+            if end <= start:
+                break
+
+            page = reader.read(source, start, end, token)
+
+            if page.continuation is not None and page.continuation == token:
+                raise CollectionError("pagination_not_advancing")
+
+            with database:
+                added = store.append(database, source, page.events, now)
+
+                if page.continuation is not None:
+                    database.execute(
+                        """
+                        UPDATE sources SET continuation = ?,
+                            status = 'partial',
+                            last_error = NULL, next_poll_at = ?
+                        WHERE source_key = ?
+                        """,
+                        (page.continuation, now + 15, key),
+                    )
+                else:
+                    store.complete_window(database, key, start, end, now)
+                    caught_up = end >= now * 1000
+                    database.execute(
+                        """
+                        UPDATE sources SET cursor_ms = ?,
+                            window_start_ms = NULL, window_end_ms = NULL,
+                            continuation = NULL, status = ?, next_poll_at = ?,
+                            last_error = NULL WHERE source_key = ?
+                        """,
+                        (
+                            end,
+                            "ready" if caught_up else "catching_up",
+                            now + (feed.interval if caught_up else 15),
                             key,
-                            event,
-                            matched,
-                            now,
-                            account_id=account_id,
-                        )
+                        ),
+                    )
 
-                    if continuation is not None:
-                        db.execute(
-                            """
-                            UPDATE source_progress
-                            SET continuation = ?, status = 'partial',
-                                last_error = NULL, next_poll_at = ?
-                            WHERE source_key = ?
-                            """,
-                            (continuation, now + 15, key),
-                        )
-                    else:
-                        caught_up = end >= now * 1000
+            statistics["pages_read"] += 1
+            statistics["events_read"] += len(page.events)
+            statistics["events_added"] += added
 
-                        db.execute(
-                            """
-                            UPDATE source_progress
-                            SET cursor_ms = ?, window_start_ms = NULL,
-                                window_end_ms = NULL, continuation = NULL,
-                                status = ?, next_poll_at = ?, last_error = NULL
-                            WHERE source_key = ?
-                            """,
-                            (
-                                end,
-                                "ready" if caught_up else "catching_up",
-                                now + (interval if caught_up else 15),
-                                key,
-                            ),
-                        )
-
-                if continuation is None and end >= now * 1000:
-                    break
+            if page.continuation is None and end >= now * 1000:
+                break
     except Exception as error:
-        # Retry the same fixed range from its beginning, safely deduplicating
-        # pages already committed. This also recovers expired provider tokens.
         safe_error = (
             error.code
-            if isinstance(error, AwsCallError)
+            if isinstance(error, CollectionError)
             else str(error)
-            if isinstance(error, MatchError)
+            if isinstance(error, store.StoreError)
             else type(error).__name__
         )
 
-        with db:
-            db.execute(
+        with database:
+            database.execute(
                 """
-                UPDATE source_progress
-                SET status = 'failed', last_error = ?, next_poll_at = ?,
-                    continuation = NULL
+                UPDATE sources SET status = 'failed', last_error = ?,
+                    next_poll_at = ?, continuation = CASE
+                        WHEN ? THEN continuation ELSE NULL END
                 WHERE source_key = ?
                 """,
-                (safe_error, now + 15, key),
+                (
+                    safe_error,
+                    now + 15,
+                    isinstance(error, CollectionError) and error.resume,
+                    key,
+                ),
             )
 
-    state = db.execute(
-        "SELECT * FROM source_progress WHERE source_key = ?", (key,)
+    state = database.execute(
+        "SELECT * FROM sources WHERE source_key = ?", (key,)
     ).fetchone()
-
     return {**dict(state), **statistics}

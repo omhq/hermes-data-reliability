@@ -1,226 +1,152 @@
-import hashlib
-import json
-import re
+from collections.abc import Mapping
+from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Hashable
+from typing import Any
 
-import yaml
-
-from incidents.specification import (
-    DefinitionError,
+from observations.configuration import (
+    InvalidConfiguration,
     fields,
-    validate_investigation,
+    name,
 )
+from observations.models import Feed, Source
+from observations.subscriptions import Consumer
+from observations.yaml import load_yaml
 
-MAX_DEFINITION_BYTES = 65536
-MAX_RULES = 64
-MAX_CONDITIONS = 128
-SEVERITIES = {"warning": 1, "error": 2, "critical": 3}
-
-
-class Loader(yaml.SafeLoader):
-    depth = 0
-    nodes = 0
-
-    def compose_node(
-        self,
-        parent: yaml.Node | None,
-        # PyYAML passes nodes and None here beyond its int-only type stub.
-        index: Any,
-    ) -> yaml.Node | None:
-        self.nodes += 1
-
-        if (
-            self.check_event(yaml.AliasEvent)
-            or self.depth >= 16
-            or self.nodes > 5000
-        ):
-            raise DefinitionError("YAML aliases or excessive depth/size")
-
-        self.depth += 1
-
-        try:
-            return super().compose_node(parent, index)
-        finally:
-            self.depth -= 1
-
-    def construct_mapping(
-        self, node: yaml.MappingNode, deep: bool = False
-    ) -> dict[Hashable, Any]:
-        result = {}
-
-        for key_node, value_node in node.value:
-            key = self.construct_object(key_node, deep=deep)
-
-            if type(key) is not str or key in result:
-                raise DefinitionError("Duplicate or invalid YAML key")
-
-            result[key] = self.construct_object(value_node, deep=deep)
-
-        return result
-
-
-def duration(value: object, minimum: int, maximum: int) -> int:
-    if type(value) is not str:
-        raise DefinitionError("Duration must use s, m, or h")
-
-    matched = re.fullmatch(r"(0|[1-9][0-9]{0,5})([smh])", value)
-
-    if not matched:
-        raise DefinitionError("Duration must use s, m, or h")
-
-    seconds = int(matched[1]) * {"s": 1, "m": 60, "h": 3600}[matched[2]]
-
-    if not minimum <= seconds <= maximum:
-        raise DefinitionError("Duration is outside the supported limits")
-
-    return seconds
-
-
-def name(value: object) -> None:
-    if type(value) is not str or not re.fullmatch(
-        r"[A-Za-z][A-Za-z0-9_-]{0,79}", value
-    ):
-        raise DefinitionError("Invalid source or rule name")
-
-
-def condition(
-    value: object, depth: int = 0, count: list[int] | None = None
-) -> None:
-    count = [0] if count is None else count
-    count[0] += 1
-
-    if depth > 8 or count[0] > MAX_CONDITIONS:
-        raise DefinitionError("Match expression is too complex")
-    if type(value) is not dict or len(value) != 1:
-        raise DefinitionError("Each match needs exactly one operator")
-
-    operator, operand = next(iter(value.items()))
-
-    if operator in {"contains", "regex"}:
-        if type(operand) is not str or not 1 <= len(operand) <= 1024:
-            raise DefinitionError(
-                "Match text must contain 1 to 1024 characters"
-            )
-    elif operator in {"any", "all"}:
-        if type(operand) is not list or not 1 <= len(operand) <= 32:
-            raise DefinitionError("any/all needs 1 to 32 conditions")
-
-        for child in operand:
-            condition(child, depth + 1, count)
-    else:
-        raise DefinitionError("Unsupported match operator")
-
-
-def fingerprint(value: object) -> str:
-    serialized = json.dumps(value, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(serialized.encode()).hexdigest()
-
-
-def investigation_settings(
-    definition: dict[str, Any], source: dict[str, Any]
-) -> dict[str, str]:
-    """Resolve shared YAML defaults and optional source-specific overrides."""
-    return {**definition["investigation"], **source.get("investigation", {})}
+from .registered import CONNECTORS
+from .registry import ConfiguredConnectors, ConnectorRegistry
 
 
 def validate(
-    value: object, approved: dict[str, Any] | None = None
+    value: object,
+    approved: dict[str, Any] | None = None,
+    *,
+    registry: ConnectorRegistry = CONNECTORS,
+    resolve_template: bool = False,
 ) -> dict[str, Any]:
-    """Reject unsupported sources and locations before any provider reads."""
-    value = fields(value, {"version", "sources", "investigation"})
+    catalog = fields(value, {"version", "sources"})
 
-    if type(value["version"]) is not int or value["version"] != 1:
-        raise DefinitionError("Unsupported observation version")
+    if type(catalog["version"]) is not int or catalog["version"] != 2:
+        raise InvalidConfiguration("Source catalog requires version 2")
+    if type(catalog["sources"]) is not dict or len(catalog["sources"]) > 16:
+        raise InvalidConfiguration("Define at most sixteen named sources")
+    if resolve_template and approved is None:
+        raise InvalidConfiguration("Template binding requires host policy")
 
-    validate_investigation(value["investigation"], defaults=True)
+    sources = {}
 
-    sources = value["sources"]
+    for identifier, raw in catalog["sources"].items():
+        name(identifier)
 
-    if type(sources) is not dict or not 1 <= len(sources) <= 4:
-        raise DefinitionError("Define between one and four sources")
+        if resolve_template and approved is not None:
+            if type(raw) is not dict:
+                raise InvalidConfiguration("Source requires a connector")
 
-    locations = set()
+            raw = registry.get(raw.get("connector")).prepare_template(
+                raw, approved
+            )
 
-    for source_id, source in sources.items():
-        name(source_id)
-        fields(
-            source,
-            {"connector", "region", "log_group", "collection", "rules"},
-            {"investigation"},
-        )
+        sources[identifier] = registry.validate(raw)
 
-        if source["connector"] != "cloudwatch_logs":
-            raise DefinitionError("Only cloudwatch_logs is supported")
+    result = {"version": 2, "sources": sources}
 
-        for key, pattern in (
-            ("region", r"[a-z]{2}(?:-[a-z]+)+-[0-9]+"),
-            ("log_group", r"[./A-Za-z0-9_#-]{1,512}"),
-        ):
-            if type(source[key]) is not str or not re.fullmatch(
-                pattern, source[key]
-            ):
-                raise DefinitionError("Invalid CloudWatch location")
-            if approved is not None and source[key] != approved.get(key):
-                raise DefinitionError("CloudWatch location is not authorized")
+    if approved is not None:
+        resolve_sources(result, registry.configure(approved))
 
-        location = (source["region"], source["log_group"])
-
-        if location in locations:
-            raise DefinitionError("A CloudWatch location may appear only once")
-
-        locations.add(location)
-
-        collection = source["collection"]
-
-        fields(
-            collection,
-            {"mode", "poll_interval", "initial_lookback", "overlap"},
-        )
-
-        if collection["mode"] != "incremental":
-            raise DefinitionError("Only incremental collection is supported")
-
-        duration(collection["poll_interval"], 15, 3600)
-        duration(collection["initial_lookback"], 1, 86400)
-        duration(collection["overlap"], 0, 3600)
-
-        rules = source["rules"]
-
-        if type(rules) is not dict or not 1 <= len(rules) <= MAX_RULES:
-            raise DefinitionError("Define between one and 64 rules")
-
-        for rule_id, rule in rules.items():
-            name(rule_id)
-            fields(rule, {"severity", "match"})
-
-            if (
-                type(rule["severity"]) is not str
-                or rule["severity"] not in SEVERITIES
-            ):
-                raise DefinitionError("Unsupported severity")
-
-            condition(rule["match"])
-
-        if "investigation" in source:
-            validate_investigation(source["investigation"])
-
-    return value
+    return result
 
 
 def load(
-    path: str | Path, approved: dict[str, Any] | None = None
+    path: str | Path,
+    approved: dict[str, Any] | None = None,
+    *,
+    resolve_template: bool = False,
+    registry: ConnectorRegistry = CONNECTORS,
 ) -> dict[str, Any]:
-    """Use safe YAML, rejecting aliases, duplicate keys and deep documents."""
-    with Path(path).open("rb") as stream:
-        payload = stream.read(MAX_DEFINITION_BYTES + 1)
+    return validate(
+        load_yaml(Path(path)),
+        approved,
+        registry=registry,
+        resolve_template=resolve_template,
+    )
 
-    if len(payload) > MAX_DEFINITION_BYTES:
-        raise DefinitionError("Observation definition exceeds 64 KiB")
 
-    try:
-        value = yaml.load(payload, Loader=Loader)
-    except yaml.YAMLError, UnicodeError, RecursionError:
-        raise DefinitionError("Invalid observation YAML") from None
+def resolve_sources(
+    catalog: dict[str, Any], connectors: ConfiguredConnectors
+) -> dict[str, Source]:
+    return {
+        alias: connectors.resolve(definition)
+        for alias, definition in catalog["sources"].items()
+    }
 
-    return validate(value, approved)
+
+def plan(
+    sources: Mapping[str, Source], consumers: tuple[Consumer, ...]
+) -> dict[str, Any]:
+    feeds: dict[str, dict[str, Any]] = {}
+    subscriptions: dict[str, dict[str, str]] = {}
+
+    for consumer in consumers:
+        if consumer.identifier in subscriptions:
+            raise InvalidConfiguration("Consumer IDs must be unique")
+
+        subscriptions[consumer.identifier] = {}
+
+        for subscription in consumer.subscriptions:
+            if subscription.source not in sources:
+                raise InvalidConfiguration(
+                    "Subscription source is not defined"
+                )
+            if not consumer.enabled:
+                continue
+
+            source = sources[subscription.source]
+            key = source.key
+            subscriptions[consumer.identifier][subscription.source] = key
+            existing = feeds.get(key)
+
+            if existing is None:
+                feeds[key] = {
+                    "source": asdict(source),
+                    "aliases": [subscription.source],
+                    "interval": subscription.interval,
+                    "lookback": subscription.lookback,
+                    "overlap": subscription.overlap,
+                }
+            else:
+                existing["aliases"] = sorted(
+                    set(existing["aliases"]) | {subscription.source}
+                )
+                existing["interval"] = min(
+                    existing["interval"], subscription.interval
+                )
+                existing["lookback"] = max(
+                    existing["lookback"], subscription.lookback
+                )
+                existing["overlap"] = max(
+                    existing["overlap"], subscription.overlap
+                )
+
+    if len(consumers) > 16:
+        raise InvalidConfiguration("Define at most sixteen consumers")
+
+    return {
+        "version": 1,
+        "feeds": feeds,
+        "consumers": subscriptions,
+        "consumer_revisions": {
+            consumer.identifier: consumer.revision for consumer in consumers
+        },
+    }
+
+
+def feeds(compiled: dict[str, Any]) -> tuple[Feed, ...]:
+    return tuple(
+        Feed(
+            Source(**item["source"]),
+            tuple(item["aliases"]),
+            item["interval"],
+            item["lookback"],
+            item["overlap"],
+        )
+        for item in compiled["feeds"].values()
+    )
