@@ -21,11 +21,14 @@ def fields(
     return value
 
 
-def validate_investigation(value: object, *, defaults: bool = False) -> None:
+def validate_investigation(
+    value: object, *, defaults: bool = False
+) -> dict[str, str]:
     limits = {"objective": 4000, "instructions": 8000}
     value = fields(
         value, limits if defaults else (), () if defaults else limits
     )
+    settings: dict[str, str] = {}
 
     for key, text in value.items():
         maximum = limits[key]
@@ -36,3 +39,7 @@ def validate_investigation(value: object, *, defaults: bool = False) -> None:
             raise DefinitionError(
                 "Investigation " + key + " exceeds byte limit"
             )
+
+        settings[key] = text
+
+    return settings

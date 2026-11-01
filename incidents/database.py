@@ -1,7 +1,35 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+INCIDENTS_TABLE_SQL = """
+CREATE TABLE incidents (
+    id TEXT PRIMARY KEY,
+    evidence TEXT NOT NULL,
+    detected_at INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('run', 'log', 'health')),
+    source_id TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    definition_revision TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt INTEGER NOT NULL DEFAULT 0,
+    finding TEXT,
+    last_error TEXT,
+    claim_token TEXT,
+    lease_expires_at INTEGER,
+    CHECK (
+        status IN ('pending', 'running', 'complete', 'exhausted')
+    ),
+    CHECK (
+        (status = 'running' AND claim_token IS NOT NULL
+         AND lease_expires_at IS NOT NULL)
+        OR (status != 'running' AND claim_token IS NULL
+            AND lease_expires_at IS NULL)
+    )
+)
+"""
 
 
 class UnsupportedLedger(ValueError):
@@ -37,56 +65,19 @@ def connect(path: str | Path) -> sqlite3.Connection:
         db.execute("PRAGMA journal_mode = DELETE")
         db.execute("PRAGMA synchronous = EXTRA")
 
+        incident_table = INCIDENTS_TABLE_SQL.replace(
+            "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+        )
         db.executescript(f"""
             BEGIN IMMEDIATE;
-            CREATE TABLE IF NOT EXISTS incidents (
-                id TEXT PRIMARY KEY,
-                evidence TEXT NOT NULL,
-                detected_at INTEGER NOT NULL,
-                kind TEXT NOT NULL CHECK (kind IN ('run', 'log')),
-                source_id TEXT NOT NULL,
-                severity TEXT NOT NULL,
-                definition_revision TEXT NOT NULL,
-                account_id TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                attempts INTEGER NOT NULL DEFAULT 0,
-                next_attempt INTEGER NOT NULL DEFAULT 0,
-                finding TEXT,
-                last_error TEXT,
-                claim_token TEXT,
-                lease_expires_at INTEGER,
-                CHECK (
-                    status IN ('pending', 'running', 'complete', 'exhausted')
-                ),
-                CHECK (
-                    (status = 'running' AND claim_token IS NOT NULL
-                     AND lease_expires_at IS NOT NULL)
-                    OR (status != 'running' AND claim_token IS NULL
-                        AND lease_expires_at IS NULL)
-                )
-            );
+            {incident_table};
             CREATE TABLE IF NOT EXISTS attempts (
                 incident_id TEXT NOT NULL,
                 started_at INTEGER NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS source_progress (
-                source_key TEXT PRIMARY KEY,
-                source_id TEXT NOT NULL,
-                cursor_ms INTEGER NOT NULL,
-                window_start_ms INTEGER,
-                window_end_ms INTEGER,
-                continuation TEXT,
-                next_poll_at INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'pending',
-                last_error TEXT
-            );
             CREATE TABLE IF NOT EXISTS observation_definitions (
                 revision TEXT PRIMARY KEY,
                 definition TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS collection_starts (
-                source_key TEXT PRIMARY KEY,
-                start_ms INTEGER NOT NULL
             );
             CREATE TABLE IF NOT EXISTS log_matches (
                 source_key TEXT NOT NULL,
@@ -97,12 +88,6 @@ def connect(path: str | Path) -> sqlite3.Connection:
                 severity TEXT NOT NULL,
                 spans TEXT NOT NULL,
                 PRIMARY KEY(source_key, event_id, rule_id, rule_revision)
-            );
-            CREATE TABLE IF NOT EXISTS matched_log_events (
-                source_key TEXT NOT NULL,
-                event_id TEXT NOT NULL,
-                event TEXT NOT NULL,
-                PRIMARY KEY(source_key, event_id)
             );
             CREATE INDEX IF NOT EXISTS log_matches_incident
             ON log_matches(incident_id);
