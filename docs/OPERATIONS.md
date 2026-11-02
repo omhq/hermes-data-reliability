@@ -4,7 +4,57 @@ Your day-to-day controls: start the lab, follow the evidence, and pause when
 you're done. The agent and synthetic pipeline have separate switches.
 
 “Your local machine” is your computer; the “runtime host” runs the collector
-and investigator. Commands below use the current Linux/systemd deployment.
+and investigator. The local container and EC2 use the same Linux/systemd
+services. Use the Make targets below for your local container; the SSH workflow
+connects to EC2.
+
+## Local container controls
+
+Run these from the repository root on your local machine after
+[local setup](SETUP.md#local-docker-runtime):
+
+| Action | Command |
+| --- | --- |
+| Build and start the runtime host | `make up` |
+| Inspect services, health, and budget | `make status` |
+| Follow service logs | `make logs` |
+| Pause workers and Hermes containers | `make stop` |
+| Resume after a pause | `make start` |
+| Restart services | `make restart` |
+| Authenticate Hermes | `make login` |
+| Investigate interactively | `make chat` |
+| Open a runtime host shell | `make shell` |
+| Stop the host, preserving volumes | `make down` |
+
+Pass command options with `ARGS`, for example `make chat ARGS="--minutes 15"`.
+Inside `make shell`, use the same `labctl`, `systemctl`, `journalctl`, and
+`/srv/hermes-lab/` paths documented for the runtime host. To configure YAML,
+edit it there and run `labctl restart` to validate and compile it.
+
+The runtime uses a snapshot of the selected profile’s credentials. SSO and
+role sessions retain their provider expiry; static keys have no session expiry.
+Refresh the snapshot after login, expiry, or key rotation from your local
+machine with an explicit profile:
+
+```bash
+make credentials AWS_PROFILE=YOUR_PROFILE
+```
+
+The command replaces the trusted credential file without restarting workers or
+resetting budgets. It revalidates the configured account and principal; a
+different principal requires `make configure` and `make up`. Expired or missing
+credentials fail closed. Refresh your SSO login first if necessary. Hermes
+authentication is separate from AWS authentication.
+
+After changing resource allowlists or optional role settings in
+`.local/runtime.yaml`, run `make configure AWS_PROFILE=YOUR_PROFILE`, then
+`make up` to activate the reviewed configuration.
+
+`make down` keeps OAuth, findings, observations, executor history, and nested
+Docker images in project-specific named volumes. A later `make up` preserves
+your pause choice. Checkpoints use `labctl checkpoint` inside `make shell`.
+Local volumes have no AWS Backup coverage; see
+[local saved state](RECOVERY.md#local-container-saved-state).
 
 ## Connect from your local machine
 

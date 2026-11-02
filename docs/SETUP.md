@@ -1,7 +1,101 @@
 # Setup
 
-You'll need Terraform 1.5.7+, AWS CLI, Python 3.14, a deployment profile, and an
-SSH key pair. Run commands on your local machine from the repository root.
+Run commands on your local machine from the repository root. For EC2
+provisioning, you'll need Terraform 1.5.7+, AWS CLI, Python 3.14, a deployment
+profile, and an SSH key pair. Local runtime and test requirements are below.
+
+## Local Docker runtime
+
+Install Docker Engine or Docker Desktop with Compose v2. Give Docker at least
+8 GiB of memory and 4 CPUs. The runtime host uses Amazon Linux 2023 with
+Python 3.14 and runs on your Docker host's native architecture. Docker selects
+the matching native variant of the same pinned Hermes image digest used on
+EC2. The first build and Hermes image download can take several minutes. No
+incoming ports are published.
+
+The trusted host container runs systemd and its own Docker daemon, which requires
+privileged mode and a private cgroup namespace. It does not mount your local
+machine's Docker socket. Hermes and its tools retain their existing container
+isolation, private network, resource limits, and blocked metadata access.
+
+You still need real, approved AWS evidence resources. S3, SQS, Lambda, and
+CloudWatch run in AWS. Local execution covers collection, consumers, the
+executor, investigations, chat, and configured report delivery. AWS Backup and
+the EC2 CloudWatch health metric apply only to EC2; local health is saved and
+logged inside the container.
+
+Prepare the local Python environment from the README and install AWS CLI v2.
+Choose an explicit nondefault AWS profile with access to your evidence resources.
+You can use existing resources without provisioning EC2 or running Terraform.
+On your local machine, create your private resource configuration:
+
+```bash
+mkdir -p .local
+cp runtime.example.yaml .local/runtime.yaml
+```
+
+Edit `.local/runtime.yaml` with the approved account, region, bucket, and log
+groups. Optional tool allowlists follow the same rules as EC2; select matching
+packages in `investigator/runtime/config.yaml`. Credentials stay in your AWS
+profile. Leave `authentication: {}` to use that profile's permissions directly.
+If you want a separate IAM permission boundary, set
+`authentication.assume_role_arn` to an existing role that trusts your principal.
+Role assumption is optional. Your profile can itself use SSO, static keys, or
+its own role configuration.
+
+Authenticate the selected profile as needed, then configure and start:
+
+```bash
+make configure AWS_PROFILE=YOUR_PROFILE
+make up
+make login
+make status
+```
+
+For SSO, run `aws sso login --profile YOUR_PROFILE` first. `configure` validates
+the resource configuration and tool selection, resolves that explicit profile,
+and verifies the account and principal. It writes approved configuration and a
+credential snapshot to ignored `.local/docker/` with private file permissions.
+Hermes receives neither those credentials nor the host's Docker socket. Your
+AWS profile files, SSO cache, and SSH keys stay on your local machine.
+
+To choose another private resource file:
+
+```bash
+make configure AWS_PROFILE=YOUR_PROFILE CONFIG_SOURCE=/path/to/runtime.yaml
+```
+
+If this checkout already has agent Terraform state, you can seed the resource
+file from its saved outputs once. This reads existing state without applying
+infrastructure changes. It replaces `.local/runtime.yaml`; later configuration
+uses that file without Terraform:
+
+```bash
+make configure AWS_PROFILE=YOUR_PROFILE FROM_TERRAFORM=1
+```
+
+The import copies resource allowlists, leaves role assumption unset, and disables
+report delivery. To enable SNS delivery, set `notifications.enabled: true` and
+`notifications.topic_arn` in your resource file. The topic must belong to the
+approved account and region, and the selected profile needs publish permission.
+Configuration errors report safe categories; credentials and provider error
+bodies stay private.
+
+`make login` authenticates this local Hermes installation. Complete its device
+login independently from EC2. For daily controls and credential refresh, see
+[local operations](OPERATIONS.md#local-container-controls).
+
+For tests and formatting checks, Docker alone is enough:
+
+```bash
+make test
+make check
+```
+
+These use a separate unprivileged container with no network, AWS credentials,
+or runtime volumes. `make up` rebuilds and activates source changes while
+preserving saved state and pause intent. Rebuild the image after editing source;
+the runtime does not bind-mount your checkout.
 
 ## Provision AWS
 
@@ -217,7 +311,7 @@ python3.14 -m investigator.runtime.verify_investigator_access policy \
 ```
 
 Write/delete checks use IAM simulation, which can differ from live behavior.
-After deployment, run live checks on the runtime host:
+After EC2 deployment, run live IAM checks on the runtime host:
 
 ```bash
 cd /srv/hermes-lab/code

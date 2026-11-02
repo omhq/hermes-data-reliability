@@ -9,6 +9,9 @@ import time
 from dataclasses import dataclass
 from typing import Any, NoReturn, Protocol
 
+from aws_access.configuration import AccessPolicy, CredentialError
+from aws_access.provider import CredentialProvider
+
 
 def _unique_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result = {}
@@ -167,35 +170,19 @@ def run_json(
             process.wait()
 
 
-def host_environment(region: str) -> dict[str, str]:
-    return {
-        "PATH": "/usr/local/bin:/usr/bin:/bin",
-        "LANG": "C.UTF-8",
-        "HOME": "/nonexistent",
-        "AWS_CONFIG_FILE": "/dev/null",
-        "AWS_SHARED_CREDENTIALS_FILE": "/dev/null",
-        "AWS_EC2_METADATA_DISABLED": "false",
-        "AWS_METADATA_SERVICE_TIMEOUT": "2",
-        "AWS_METADATA_SERVICE_NUM_ATTEMPTS": "1",
-        "AWS_DEFAULT_REGION": region,
-        "AWS_MAX_ATTEMPTS": "1",
-        "AWS_PAGER": "",
-    }
-
-
 @dataclass(frozen=True)
 class NotificationConfig:
     account_id: str
     region: str
     topic_arn: str
-    role_arn: str
+    authentication: AccessPolicy
 
     @classmethod
     def load(cls, operations: dict[str, Any]) -> NotificationConfig:
         account = operations.get("account_id")
         region = operations.get("region")
         topic = operations.get("alert_topic_arn")
-        role = operations.get("notification_role_arn")
+        authentication = AccessPolicy.load(operations)
 
         if (
             type(account) is not str
@@ -206,14 +193,10 @@ class NotificationConfig:
             or not re.fullmatch(
                 rf"arn:aws:sns:{region}:{account}:[A-Za-z0-9_-]+", topic
             )
-            or type(role) is not str
-            or not re.fullmatch(
-                rf"arn:aws:iam::{account}:role/[A-Za-z0-9_-]+", role
-            )
         ):
             raise ValueError("Invalid trusted notification configuration")
 
-        return cls(account, region, topic, role)
+        return cls(account, region, topic, authentication)
 
 
 class Publisher:
@@ -222,6 +205,7 @@ class Publisher:
     ) -> None:
         self.config = config
         self.runner = runner
+        self.credentials = CredentialProvider(config.authentication)
 
     def call(
         self,
@@ -229,6 +213,7 @@ class Publisher:
         operation: str,
         arguments: list[str],
         deadline: Deadline,
+        environment: dict[str, str],
     ) -> dict[str, Any]:
         return self.runner(
             [
@@ -246,24 +231,22 @@ class Publisher:
                 "15",
                 *arguments,
             ],
-            host_environment(self.config.region),
+            environment,
             deadline,
         )
 
     def publish(self, subject: str, message: str) -> str:
         deadline = Deadline(40)
-        identity = self.call("sts", "get-caller-identity", [], deadline)
-        expected = (
-            f"arn:aws:sts::{self.config.account_id}:assumed-role/"
-            f"{self.config.role_arn.rsplit('/', 1)[-1]}/"
-        )
 
-        if identity.get(
-            "Account"
-        ) != self.config.account_id or not identity.get("Arn", "").startswith(
-            expected
-        ):
-            raise AwsCallError("unexpected_aws_identity")
+        def call(
+            command: list[str], environment: dict[str, str]
+        ) -> dict[str, Any]:
+            return self.runner(command, environment, deadline)
+
+        try:
+            environment = self.credentials.authenticate(call).environment
+        except CredentialError as error:
+            raise AwsCallError(error.code) from None
 
         result = self.call(
             "sns",
@@ -277,6 +260,7 @@ class Publisher:
                 message,
             ],
             deadline,
+            environment,
         )
         message_id = result.get("MessageId")
 

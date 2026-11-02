@@ -84,7 +84,7 @@ class PipelineHealthTests(unittest.TestCase):
         self.history = History(self.directory / "health.sqlite3")
         self.capability = Capability(self.pipelines, self.history, CONFIG)
         self.backend = Mock()
-        self.backend.assume.return_value = {"credential": "host-only"}
+        self.backend.authenticate.return_value = {"credential": "host-only"}
         self.backend.execute.return_value = (
             self.listing(),
             None,

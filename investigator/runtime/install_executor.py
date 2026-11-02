@@ -92,6 +92,7 @@ def main() -> None:
     release.parent.mkdir(parents=True, exist_ok=True)
 
     if not release.exists():
+        shutil.copytree(args.source / "aws_access", release / "aws_access")
         shutil.copytree(args.source / "observations", release / "observations")
         shutil.copytree(
             args.source / "tool_boundary",

@@ -1,62 +1,54 @@
 # Recovery
 
-Reboots happen. Saved work should survive them. On your local machine, run
-commands from the repository root. Run `labctl` on the runtime host.
+Run commands from your local machine at the repository root unless marked for
+the runtime host. Normal restarts preserve saved state; deployment does not
+convert old formats.
+
+## Local container saved state
+
+On your local machine, `make stop` pauses writers and `make down` stops the
+runtime host without deleting any volumes. The Compose project keeps separate
+volumes for `/srv/hermes-lab`, collected observations, executor state, and nested
+Docker images. `make up` rebuilds the source image and reuses those volumes.
+
+Use `labctl checkpoint` inside `make shell` for a consistent checkpoint of
+Hermes, findings, and collected observations. Preserve executor history
+separately while its service is stopped, as described below. Copy backups off
+Docker's storage before removing volumes. AWS Backup protects the EC2 host only.
+Deleting local volumes discards authentication and investigation budget history.
+
+Local AWS credentials remain in ignored `.local/docker/` and are copied into
+the host container's temporary `/run/hermes-lab-credentials/aws.json` file.
+Refresh them with `make credentials AWS_PROFILE=YOUR_PROFILE` after expiry.
+Recreating a container
+does not renew credentials or authorization. Refresh accepts only the configured
+account and principal. Use `make configure` followed by `make up` for an
+intentional principal or resource policy change; saved budget history remains.
 
 ## Process interruption and reboot
 
-Collection and investigation resume independently when `hermes-lab.target` is
-enabled and `/srv/hermes-lab/ops/enabled` exists. `labctl pause` removes that intent,
-so rebooting keeps paused work paused.
+An enabled `hermes-lab.target` and `/srv/hermes-lab/ops/enabled` resume work after
+reboot. `labctl pause` clears that intent. Collection and consumers resume from
+their own committed positions. Interrupted investigation attempts stay charged;
+a new authorized session can retry after the ten-minute claim lease expires.
 
-`findings/incidents.sqlite3` holds pending work, definitions, findings, and
-attempts. `/var/lib/hermes-lab-observations/observations.sqlite3` holds original
-events, collection coverage, ingestion cursors, and consumer positions. Collection
-commits each provider page and its progress together. Consumers commit incidents
-before acknowledging their event batch, so interruption can safely replay.
-Investigation saves ownership and attempt charges before Hermes starts, with
-no database lock during model/tool calls. Restarting keeps this state intact.
+| Saved state | Location |
+| --- | --- |
+| Queue, definitions, findings, attempts | `/srv/hermes-lab/findings/incidents.sqlite3` |
+| Collected events, coverage, positions | `/var/lib/hermes-lab-observations/observations.sqlite3` |
+| Pipeline-health history and outbox | `/var/lib/hermes-lab-executor/pipeline-health.sqlite3` |
+| Chat/authentication | `/srv/hermes-lab/hermes/` |
+| Report delivery | `/srv/hermes-lab/findings/notifications.sqlite3` |
 
-Interrupted attempts stay charged. Their ten-minute lease must expire before
-another automatic attempt, even after reboot. The model worker and authorization
-expire sooner. Recovery creates a fresh session under current host authorization.
-Three attempts per incident and rolling hour still apply; a third interruption
-exhausts the incident. Expired attempts cannot overwrite newer results.
-Committed findings export on a later tick without another model call.
-
-Keep SQLite journals beside the database on persistent local storage; never
-delete them after a crash. For offline copies, pause both workers and use a
-checkpoint. Durability covers committed state when storage honors synchronization;
-volume loss needs backups. Database readers accept only the current format or
-an empty database. Deployment does not convert saved state.
-
-Pipeline-health observations and the incident outbox survive executor restarts
-in `/var/lib/hermes-lab-executor/pipeline-health.sqlite3`. Root-volume snapshots
-include this database and `/etc/hermes-lab/pipeline-health.json`. Its source YAML
-is `/srv/hermes-lab/pipeline-health.yaml`. Saved observations do not restore
-expired access; investigations revalidate current definitions and authorization.
-The seven-day observation retention and 24-hour automatic checking window still
-apply after a restart.
-
-The `restore-files` command below restores the Hermes, incident, and shared
-observation databases. Checkpoints include every registered operator YAML
-definition and a consistent copy of shared observations. Root-volume recovery reads shared
-observations from its recovered `/var/lib/hermes-lab-observations/` directory.
-For pipeline-health history, also restore its database from the recovered
-volume while the executor and pipeline-health service are stopped. Keep its
-owner as `hermes-lab-executor` and permissions private. Recompile the intended
-expectation YAML against the current installation before restarting. Without
-that history, the agent can inspect the current state but must report the old
-observation as unavailable. Never copy live SQLite files without their journal.
+Keep SQLite journals with their databases. Pause writers and use checkpoints
+for consistent offline copies; local checkpoints do not protect against volume
+loss. Saved observations never restore expired access.
 
 ## Backups
 
-AWS Backup snapshots encrypted root storage daily at **02:00 UTC**, keeping
-seven days. Vault copies use a rotating KMS key and separate backup/restore roles.
-Protect snapshots: they contain credentials, findings, sessions, and checkpoints.
-Back up Terraform state separately.
-
-On your local machine:
+AWS Backup snapshots encrypted root storage daily at **02:00 UTC**, retaining
+seven days. Snapshots include credentials and findings; protect access and back
+up Terraform state separately. On your local machine:
 
 ```bash
 python3.14 -m investigator.runtime.recovery backup --profile YOUR_PROFILE
@@ -67,8 +59,7 @@ python3.14 -m investigator.runtime.recovery list --profile YOUR_PROFILE
 
 ## Restore
 
-From your local machine, validate account/vault and create an encrypted EBS volume
-in the lab's availability zone:
+On your local machine, create a recovery volume in the lab's availability zone:
 
 ```bash
 python3.14 -m investigator.runtime.recovery restore-volume --profile YOUR_PROFILE \
@@ -77,9 +68,9 @@ python3.14 -m investigator.runtime.recovery restore-status --profile YOUR_PROFIL
   --job-id RESTORE_JOB_ID
 ```
 
-Attach it as a secondary disk, identify it by volume ID, and mount its root
-partition. Use `ro,nouuid,norecovery` for a read-only XFS rehearsal. Replay
-journals only on the recovery volume. On the intended runtime host:
+Attach the volume, identify it by volume ID, and mount its root partition.
+Use `ro,nouuid,norecovery` for a read-only XFS rehearsal; replay journals only on
+the recovery volume. On the intended runtime host:
 
 ```bash
 sudo labctl pause
@@ -88,44 +79,34 @@ sudo labctl start
 sudo labctl status
 ```
 
-Restore stages files, checks both SQLite databases, and checkpoints current
-state. Current runtime/access policy remains authoritative. Saved YAML replaces
-the installed definition only when present. The observation database restores source and consumer positions, coverage, and
-continuation tokens. Incidents retain definition revisions, queue, and attempts. Older formats
-are rejected by current readers.
+`restore-files` checks databases and checkpoints current state before restoring
+Hermes, incidents, shared observations, and registered operator YAML. Current
+runtime/access policy stays authoritative; older formats are rejected.
 
-Backups taken after email setup also contain `findings/notifications.sqlite3`.
-Restore validates its format/integrity. Keep pending messages and delivery
-attempts with findings; collector reset leaves this database in place.
-Older backups may resend reports accepted afterward, but never redirect
-pending mail to a changed topic.
+Pipeline-health history needs a separate copy from the recovered volume while
+the executor and pipeline-health service are stopped. Keep owner `hermes-lab-executor`
+and private permissions, then recompile the intended expectation YAML before
+restarting. Without this history, earlier observations remain unavailable.
 
-Rotated OAuth may need `sudo labctl login`; use one controller per token family.
-Before retiring the old host, verify database integrity, an investigation,
-health, and backup completion. Remove recovery volumes afterward. Termination,
-replacement, or destroy may delete the root disk.
+Restore report-delivery attempts with findings. Older backups may resend reports
+accepted afterward; pending messages never redirect to a changed topic. Rotated
+OAuth may need `sudo labctl login`; use one controller per token family.
 
-For a fresh experiment, [reset the collector](OPERATIONS.md#restart-collection-from-a-new-point)
-to archive findings/queue and change the reading position while keeping budgets.
-Local archives are not off-host backups.
+Before retiring the old host, verify database integrity, an investigation, health,
+and backup completion. Remove recovery volumes afterward. Replacement or destroy
+may delete the root disk. For a fresh reading position while keeping budgets,
+use [collector reset](OPERATIONS.md#restart-collection-from-a-new-point).
 
 ## Breaking format changes
 
-This project supports the current data and configuration formats only. For a
-breaking change, recreate the affected lab state instead of converting it.
+Pause the lab, finish chat, and stop the executor before discarding affected
+state. Remove databases with their journals only after writers stop. Treat
+incident, observation, pipeline-health, and notification references as related;
+removing incident attempt history resets investigation budgets.
 
-On the runtime host, pause the lab and stop the executor before removing an
-affected database. Finish any active chat first. Remove a discarded database
-together with its journal files only after its writers have stopped. Treat
-incident, observation, pipeline-health, and notification databases as related
-state when their identifiers or references change. Removing incident attempt
-history resets its investigation budgets.
-
-Recreate affected operator YAML using the current format, then deploy and
-activate the current release using [Setup](SETUP.md#deploy-the-runtime). Empty
-databases are initialized by their owning packages. Keep credentials, OAuth
-state, SSH keys, and infrastructure state outside this reset. Normal restarts
-and deployments with unchanged formats retain saved work.
+Recreate affected YAML in the current format and [deploy/activate](SETUP.md#deploy-the-runtime).
+Owning packages initialize empty databases. Keep OAuth, credentials, SSH keys,
+and infrastructure state outside this reset.
 
 ## Image upgrades and rollback
 
@@ -136,18 +117,17 @@ sudo labctl upgrade --image nousresearch/hermes-agent@sha256:REVIEWED_DIGEST
 sudo labctl rollback
 ```
 
-Upgrade pauses, checkpoints, and waits for readiness; failure restores the prior
-image. Rollback changes the image without replaying OAuth or converting saved
-data. The selected image must use the current state format. Test an
-investigation afterward.
+Upgrade pauses, checkpoints, and waits for readiness, restoring the previous
+image on failure. Rollback changes the image without replaying OAuth or
+converting saved data. The image must support the current state format; test
+an investigation afterward.
 
 `sudo labctl checkpoint` makes an offline local copy and restores your pause
-choice. Keep checkpoints until an off-host recovery point is confirmed.
+choice. Keep it until an off-host recovery point is confirmed.
 
 ## Replace or rename a deployment
 
 Use separate Terraform states and keep new generation disabled. Pause the old
 generator/controller before transferring history/authentication over verified
-SSH. Check S3/CloudWatch history, copy recovery points, and test the new
-vault/key/role. Confirm SNS, an investigation, and a fresh backup before retiring
-originals. Review replacements caused by resource renames or bootstrap edits.
+SSH. Confirm source history, SNS, an investigation, and a fresh backup before
+retiring originals. Review replacements caused by renames or bootstrap edits.

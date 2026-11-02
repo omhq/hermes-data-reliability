@@ -18,7 +18,7 @@ class AuditSink(Protocol):
 class ReadBackend(Protocol):
     """Trusted adapter; credentials and raw responses stay on the host."""
 
-    def assume(self, deadline: Deadline) -> dict[str, str]: ...
+    def authenticate(self, deadline: Deadline) -> dict[str, str]: ...
 
     def execute(
         self,

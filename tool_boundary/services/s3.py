@@ -424,7 +424,7 @@ def listing_result(
             key == scope if action.exact_key else key.startswith(scope)
         )
 
-        if not scoped:
+        if type(key) is not str or not scoped:
             filtered = True
             continue
 

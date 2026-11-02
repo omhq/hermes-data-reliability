@@ -3,6 +3,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aws_access.configuration import AccessPolicy, CredentialError
+from aws_access.provider import CredentialProvider
 from tool_boundary.loader import load_tools
 from tool_boundary.models import PolicyDenied
 from tool_boundary.process import run_json
@@ -16,22 +18,6 @@ if TYPE_CHECKING:
     from tool_boundary.process import CliRunner, Deadline
 
 
-def host_environment(region: str) -> dict[str, str]:
-    return {
-        "PATH": "/usr/local/bin:/usr/bin:/bin",
-        "LANG": "C.UTF-8",
-        "HOME": "/nonexistent",
-        "AWS_CONFIG_FILE": "/dev/null",
-        "AWS_SHARED_CREDENTIALS_FILE": "/dev/null",
-        "AWS_EC2_METADATA_DISABLED": "false",
-        "AWS_METADATA_SERVICE_TIMEOUT": "2",
-        "AWS_METADATA_SERVICE_NUM_ATTEMPTS": "1",
-        "AWS_DEFAULT_REGION": region,
-        "AWS_MAX_ATTEMPTS": "1",
-        "AWS_PAGER": "",
-    }
-
-
 class AwsBackend:
     def __init__(
         self, config: dict[str, Any], runner: CliRunner = run_json
@@ -40,6 +26,7 @@ class AwsBackend:
         self.config = copy.deepcopy(config)
         self.providers = load_tools(self.config)
         self.runner = runner
+        self.credentials = CredentialProvider(AccessPolicy.load(config))
 
     def _call(
         self,
@@ -74,65 +61,16 @@ class AwsBackend:
             command, environment, deadline, body=body, body_limit=body_limit
         )
 
-    def _identity(self, identity: dict[str, Any], role: str) -> None:
-        expected = (
-            f"arn:aws:sts::{self.config['account_id']}:"
-            f"assumed-role/{role.rsplit('/', 1)[-1]}/"
-        )
+    def authenticate(self, deadline: Deadline) -> dict[str, str]:
+        def call(
+            command: list[str], environment: dict[str, str]
+        ) -> dict[str, Any]:
+            return self.runner(command, environment, deadline)
 
-        arn = identity.get("Arn")
-
-        if (
-            identity.get("Account") != self.config["account_id"]
-            or type(arn) is not str
-            or not arn.startswith(expected)
-        ):
-            raise ExecutionError("unexpected_aws_identity")
-
-    def assume(self, deadline: Deadline) -> dict[str, str]:
-        environment = host_environment(self.config["region"])
-        identity = self._call(
-            CliRequest("sts", "get-caller-identity", ()), environment, deadline
-        )
-
-        self._identity(identity, self.config["host_role_arn"])
-
-        response = self._call(
-            CliRequest(
-                "sts",
-                "assume-role",
-                (
-                    "--role-arn",
-                    self.config["role_arn"],
-                    "--role-session-name",
-                    "hermes-lab-executor",
-                    "--duration-seconds",
-                    "900",
-                ),
-            ),
-            environment,
-            deadline,
-        )
-
-        credentials = response["Credentials"]
-
-        for field, variable in (
-            ("AccessKeyId", "AWS_ACCESS_KEY_ID"),
-            ("SecretAccessKey", "AWS_SECRET_ACCESS_KEY"),
-            ("SessionToken", "AWS_SESSION_TOKEN"),
-        ):
-            value = credentials[field]
-            if type(value) is not str or not value:
-                raise ExecutionError("invalid_credentials")
-            environment[variable] = value
-
-        environment["AWS_EC2_METADATA_DISABLED"] = "true"
-        identity = self._call(
-            CliRequest("sts", "get-caller-identity", ()), environment, deadline
-        )
-
-        self._identity(identity, self.config["role_arn"])
-        return environment
+        try:
+            return self.credentials.authenticate(call).environment
+        except CredentialError as error:
+            raise ExecutionError(error.code) from None
 
     def execute(
         self,

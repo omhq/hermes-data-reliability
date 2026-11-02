@@ -1,0 +1,16 @@
+[Unit]
+Description=Install the shared Hermes runtime on the local container host
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/hermes-lab-source
+ExecStart=/opt/hermes-lab-collector/bin/python -m investigator.runtime.local_host
+RemainAfterExit=yes
+TimeoutStartSec=1800
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

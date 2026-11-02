@@ -1,6 +1,7 @@
 import re
 from typing import Any
 
+from aws_access.configuration import AccessPolicy, CredentialError
 from tool_boundary.models import IncidentContext, ResourceContext
 from tool_boundary.validation import require
 from tool_boundary.wire import ExecutionError
@@ -23,22 +24,10 @@ class AwsIdentity:
 
     @classmethod
     def validate_configuration(cls, configuration: dict[str, Any]) -> None:
-        account = configuration.get("account_id")
-
-        if not cls.valid_account(account) or not cls.valid_region(
-            configuration.get("region")
-        ):
-            raise ExecutionError("invalid_configuration")
-
-        for name in ("role_arn", "host_role_arn"):
-            value = configuration.get(name)
-            pattern = rf"arn:aws:iam::{account}:role/[A-Za-z0-9_-]+"
-
-            if type(value) is not str or re.fullmatch(pattern, value) is None:
-                raise ExecutionError("invalid_configuration")
-
-        if configuration["role_arn"] == configuration["host_role_arn"]:
-            raise ExecutionError("invalid_configuration")
+        try:
+            AccessPolicy.load(configuration)
+        except CredentialError as error:
+            raise ExecutionError(error.code) from None
 
     @classmethod
     def validate_scope(

@@ -42,7 +42,7 @@ class ReadPolicy[Context: IncidentContext | ResourceContext]:
         self._limits = limits
         self._clock = clock
         self.providers: ConfiguredTools | None = None
-        self.mode = mode
+        self.mode: Literal["run", "log", "resources"] = mode
         self._calls = 0
         self._reserved_bytes = 0
         self._lock = threading.Lock()

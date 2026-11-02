@@ -34,6 +34,7 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
     ]
     paths.extend((root / "investigator/capabilities").rglob("*.py"))
     paths.extend((root / "observations").rglob("*.py"))
+    paths.extend((root / "aws_access").rglob("*.py"))
 
     with tarfile.open(fileobj=output, mode="w") as archive:
         for path in sorted(paths):

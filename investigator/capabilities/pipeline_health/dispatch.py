@@ -143,7 +143,7 @@ def execute(
                 not session.environment
                 or time.monotonic() >= session.credentials_until
             ):
-                session.environment = backend.assume(deadline)
+                session.environment = backend.authenticate(deadline)
                 session.credentials_until = time.monotonic() + 840
 
             response, _ = backend.execute(

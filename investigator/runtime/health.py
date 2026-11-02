@@ -200,11 +200,12 @@ def main() -> None:
     configure_logging()
 
     operations = json.loads((ROOT / "operations.json").read_text())
+    local = Path("/etc/hermes-lab/local-runtime").exists()
 
     try:
         result = healthy()
 
-        if not backup_fresh(operations):
+        if not local and not backup_fresh(operations):
             result["healthy"] = False
             result["issues"].append("backup_older_than_36_hours")
     except Exception:
@@ -215,6 +216,15 @@ def main() -> None:
         }
 
     (ROOT / "ops/health.json").write_text(json.dumps(result))
+
+    LOGGER.log(
+        logging.INFO if result["healthy"] else logging.WARNING,
+        "Health check completed. %s",
+        json.dumps(result),
+    )
+
+    if local:
+        return
 
     data = [
         {
@@ -241,12 +251,6 @@ def main() -> None:
         ],
         capture_output=True,
         timeout=30,
-    )
-
-    LOGGER.log(
-        logging.INFO if result["healthy"] else logging.WARNING,
-        "Health check completed. %s",
-        json.dumps(result),
     )
 
     if sent.returncode:

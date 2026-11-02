@@ -1,50 +1,46 @@
 # AWS access and tools
 
-Agent tool calls pass through a host executor for bounded, read-only AWS access.
-Chat and automatic investigations use the same boundary.
+Chat and automatic investigations use a host executor for bounded, read-only
+AWS access. Background collection uses separate deadlines and audit, sharing
+approved source reads between consumers. Trusted configuration selects an
+explicit AWS profile, EC2 instance credentials, or a private credential file.
+Any source can optionally assume a configured role. The shared `aws_access/`
+provider resolves credentials, freezes each AWS call environment, and verifies
+the allowlisted account and configured principal before evidence reads.
 
-Collection runs separately. `collector/providers/aws/` validates account/roles
-and assumes its read role as `hermes-lab-collector`. Connector classes in
-`collector/connectors/` authorize configured CloudWatch groups or CloudTrail
-resource history and construct their fixed read requests. The source catalog grants no
-access. Named consumers share that collection; they cannot select credentials.
-It has its own pagination, deadlines, and audit, using host deployment JSON.
-It needs no agent investigation grant. The CloudTrail connector also checks
-the host configuration enables `hermes-cloudtrail`. Both paths currently
-use the same configured read role, with separate implementations.
-
-The executor is the standalone [`tool_boundary`](../tool_boundary/README.md)
-package: Python 3.14, standard library only. Its AWS adapter needs the installed
-AWS CLI; the service needs Linux, protected sockets, and IAM/network isolation.
+Local setup resolves your explicit profile on your local machine. Trusted
+services inside the host read its credential snapshot from
+`/run/hermes-lab-credentials/aws.json`; Hermes and its tools cannot read it.
+Configuration pins the principal's stable AWS identifier. Refresh revalidates
+both source and final principals and retains authorization and budget history.
+A missing or expired file cannot fall back to instance metadata or a default
+profile. EC2 configuration selects instance credentials and the scoped read
+role. The local host marker controls health behavior only.
 
 ## Request flow
 
-1. The host opens an approved resource profile for chat or scope for an incident.
-2. An enabled plugin sends raw arguments and a private context token. Tokens
-   never enter model-visible arguments or prompts.
+1. The host opens an approved chat profile or incident scope.
+2. A plugin sends arguments with a private token kept outside model prompts.
 3. The executor checks scope, types, expiry, and budget, audits authorization,
-   and assumes the investigator role for fifteen minutes.
-4. An immutable plan selects a fixed CLI operation. The backend rechecks
-   account, region, operation, and single-page limits.
-5. The host bounds and validates output, audits completion, rechecks expiry and
-   revocation, and saves a detached receipt before releasing evidence.
-   Failed checks withhold results.
+   and authenticates the configured AWS principal.
+4. An immutable plan selects a fixed operation within the approved resources.
+5. The host validates and bounds results, rechecks expiry/revocation, and saves
+   an audit record and receipt before releasing evidence. Failed checks withhold it.
 
-Only the host role can assume the read role. IAM permits `s3:ListBucket`,
-`s3:GetObject`, and `logs:FilterLogEvents` on configured resources. SSE-S3 needs
-no KMS decrypt permission. Writes, account-wide discovery, and log unmasking
-are excluded; health/backup permissions are separate. Optional
-`cloudtrail:LookupEvents` access is region-bound, with host checks for exact
-resource names and authorized windows.
-Optional SQS and Lambda packages grant only queue-attribute and function/mapping
-configuration reads on explicit resource ARNs. They grant no message receive,
-send, delete, function invocation, code download, or configuration-write access.
+The EC2 deployment restricts read-role trust to the host role. Its IAM policy
+allows configured S3/log reads and optional CloudTrail, SQS, and Lambda metadata
+reads. A direct local profile uses its existing IAM permissions. A dedicated
+role adds an AWS-enforced ceiling when you want one. In either mode, trusted
+code enforces the same resource allowlists, operations, budgets, audit, and
+evidence receipts; the model cannot select credentials or widen policy.
+Writes, account-wide discovery, log unmasking, message operations, function
+invocation, and code download remain outside investigative tool access. Health
+and backup permissions are separate.
 
 ## Tool packages
 
-Each native Hermes plugin owns its registration, schemas, and Unix-socket client.
-Each imports only its own files and the standard library; copy the whole folder
-to reuse it.
+Native Hermes plugins contain schemas, registration, and standalone socket clients.
+Trusted service classes are registered in `tool_boundary/registered.py`.
 
 | Package | Source | Toolset |
 | --- | --- | --- |
@@ -54,11 +50,6 @@ to reuse it.
 | Lambda settings | `investigator/tools/aws_lambda/` | `aws_lambda` |
 | S3 and resource inventory | `investigator/tools/hermes_lab_aws/` | `hermes_lab_aws` |
 | Pipeline delivery checks | `investigator/capabilities/pipeline_health/tools/` | `pipeline_health` |
-
-`tool_boundary/registered.py` registers the installed service classes. Their
-metadata defines package names, toolsets, tool names, and plugin directories.
-`catalog.py` normalizes selections; `loader.py` creates configured host
-instances. Plugins remain independent socket clients.
 
 Select packages in `investigator/runtime/config.yaml`:
 
@@ -77,133 +68,60 @@ plugins:
         - your-function-name
 ```
 
-S3 and CloudWatch are enabled by default. CloudTrail needs at least one exact
-resource name. Packages work independently; `plugins.disabled` wins over
-`plugins.enabled`. Unknown names, unknown `plugins.entries` packages, and
-unsupported package options are rejected. Entries cannot select a Python module,
-class, command, endpoint, or credentials.
-An investigation needs at least one enabled package.
+S3 and CloudWatch are enabled by default. `plugins.disabled` takes precedence;
+unknown packages or options are rejected. CloudTrail requires exact resource
+names. SQS/Lambda require Terraform inputs `sqs_queue_arns`,
+`lambda_function_arns`, and `lambda_event_source_mappings`. ARNs must belong to
+the deployment account/region; mapping UUIDs bind an approved function and queue.
+Each allowlist accepts at most fifty entries. Queue URLs are derived on the host.
 
-SQS and Lambda are optional. Set `sqs_queue_arns`, `lambda_function_arns`, and
-`lambda_event_source_mappings` in the agent Terraform inputs before enabling
-their packages. All ARNs must belong to the deployment account and region;
-functions are unqualified ARNs. Each mapping UUID explicitly binds an approved
-function to an approved SQS queue. Scope comes from trusted deployment outputs,
-not model arguments. Each allowlist accepts at most fifty entries. The model
-selects an existing approved ARN or UUID; it cannot discover arbitrary resources
-or choose an API, endpoint, qualifier, or queue URL. Queue URLs are derived on
-the host from approved ARNs.
+Review/apply the agent Terraform plan before deploying. Deployment compares
+normalized YAML and host selections. Full activation generates a read-only
+`tool-packages.json` manifest; the model-side selector accepts only host-enabled
+packages with matching options. Partial executor/plugin deployment does not
+change package selection. Disabled tools are rejected before reserving budget.
 
-Pipeline health installs a trusted host extension explicitly through
-`investigator.capabilities.pipeline_health.server`. Its Hermes plugin contains only the
-schemas and socket client. YAML is validated and compiled before activation;
-the model cannot edit that definition or select host Python code. Each presence
-check reserves one tool call and makes at most one bounded S3 listing. Chat
-checks and scheduled checks share that implementation. The scheduler's control
-operations are available only on protected host sockets, never as model tools.
-
-An automatic health incident binds a pipeline revision, named expectation,
-scheduled timestamp, and approved resource identity to its exact evidence key.
-It can read that key, explicitly configured supporting keys for the same
-delivery, and the approved log group from five
-minutes before the scheduled delivery through five minutes after its deadline.
-It cannot select another delivery or browse neighboring S3 keys. Log responses
-still use the normal scope/output validators. A check receipt records its
-observation time and result; current-session receipts for history retain each
-original observation time inside the returned data.
-
-Use the [setup workflow](SETUP.md): review/apply the agent Terraform plan, then
-deploy. Terraform turns this YAML into a trusted tool selection and optional
-CloudTrail IAM grant. Chat and automation use the selected toolsets. The host
-rejects disabled tools before reserving budget or calling AWS; model-writable
-configuration cannot expand access.
-
-SQS and Lambda reads are available in chat and run/log investigations. Automatic
-pipeline-health investigations retain their configured evidence scope; these
-packages do not add health checks or widen that scope.
-
-CloudTrail [LookupEvents](https://docs.aws.amazon.com/awscloudtrail/latest/APIReference/API_LookupEvents.html)
-covers the last 90 days of management events. Each call reads up to 50 events,
-checks account/region/time/resource provenance, and issues receipts. Data events,
-Insights, and Lake are excluded. Empty, filtered, paginated, or truncated results
-cannot prove that no relevant change occurred.
+SQS/Lambda reads work in chat and run/log investigations. Pipeline-health
+investigations retain their configured delivery scope: exact evidence and
+supporting keys, plus approved logs from five minutes before delivery through
+five minutes after its deadline. Its host extension is installed explicitly;
+protected scheduler operations are never model tools.
 
 ## Host tool organization
 
-Every service implements `ToolProvider` from `tool_boundary/services/base.py`.
-The shared boundary calls this interface rather than switching on AWS operation
-names. Each service class owns:
+Services implement `ToolProvider` in `tool_boundary/services/base.py`:
 
 | Part | Responsibility |
 | --- | --- |
-| Package metadata | Package ID, toolset, tools per context, plugin directory |
-| `agent_options` / `host_options` | Normalize YAML entries and trusted deployment settings |
-| Constructor / `resources` | Validate and describe its approved host resources |
-| `validate_scope` | Validate the context fields owned by that service |
-| `authorize` | Validate arguments and resolve a fixed read within the current scope |
-| `request` | Recheck a trusted plan and construct its bounded transport request |
-| `normalize` | Validate provider identity and content, project safe fields, and supply evidence references |
-| `read` / `describe` | Execute remote reads or return local scope information |
+| Metadata and options | Package/toolset names, tools per scope, plugin paths, normalized YAML/host settings |
+| `validate_scope` | Validate context fields owned by the service |
+| `authorize` | Validate arguments and resolve a scoped read |
+| `request` | Construct a fixed, bounded transport request |
+| `normalize` | Validate provider results, select safe fields, and issue references |
+| `read` / `describe` | Execute a read or describe approved resources |
 
-S3, CloudWatch, CloudTrail, SQS, and Lambda each have their own file in
-`services/`. Operation names, CLI parameter maps, response projections, and
-reference formats stay with that service. S3 owns bucket and prefix checks;
-CloudWatch owns log-group checks. Their shared AWS base uses
-`providers/aws_identity.py::AwsIdentity` for account, region, and role formats.
-Queue ARN validation stays with SQS, and Lambda validates its function ARNs and
-mapping bindings. The common AWS identity class supplies reusable ARN parsing.
+Each service owns its operation names, argument maps, resource validation,
+response projections, and reference formats. Shared AWS identity parsing lives
+in `providers/aws_identity.py`; credentials and CLI execution in `providers/aws.py`.
+The registry validates applicable enabled services on scope binding and rechecks
+the selected service per call. Capability scope checks delegate to the installed
+extension. The boundary imports no investigator code.
 
-The registry runs `validate_scope` for applicable enabled services when binding
-a policy, then rechecks the selected service before authorizing each read.
-Disabled services do not impose their resource validators on unrelated tools.
-Capability adapters delegate scope validation to their installed extension.
-`IncidentContext`, `ResourceContext`, and `PolicyLimits` validate their own
-identifiers, time bounds, and budget structure. `validation.py` contains only
-generic field, integer, clock, and denial helpers; resource policies do not
-construct synthetic incident contexts to reuse tool-specific validation.
-
-`providers/aws.py` handles identity,
-role credentials, bounded CLI execution, and optional response bodies. It does
-not select service operations.
-
-`policy.py` reserves calls and bytes after a service authorizes the request.
-`executor.py` handles session ownership, expiry, cancellation, audit, hashes,
-and receipt publication. `results.py` bounds the references supplied by a
-service. When its citation budget is reached, it trims the collection named by
-that service and marks the result partial. `receipts.py` verifies citations
-against saved session receipts without knowing service operations.
-
-Context factories in `scopes.py` open run, log, resource-profile, or installed
-capability scopes. `loader.py` selects these trusted factories and binds their
-policies to the same configured service registry. Capability execution uses a
-generic adapter for the explicitly installed host extension; the boundary
-imports no investigator package. Changing a capability configuration rebuilds
-the executor and its configured instances.
+`scopes.py` and `loader.py` create trusted contexts. Policies reserve budgets;
+`executor.py` manages sessions, audit, and receipts; `results.py` bounds evidence;
+`receipts.py` resolves exact citations. Contexts validate their identifiers and
+time ranges; `validation.py` holds only generic helpers.
 
 ### YAML, host policy, and model selection
 
-Your `plugins.enabled`, `plugins.disabled`, and `plugins.entries` settings use
-the registered package names. A class validates only its supported options.
-CloudTrail's class owns `resource_names`; its host counterpart reads
-`cloudtrail_resource_names`. SQS and Lambda classes validate their host-approved
-ARNs and mapping bindings. Resource allowlists still come from reviewed
-Terraform outputs, and YAML cannot widen them.
+Package classes normalize `plugins.entries` and their corresponding trusted host
+settings. Resource allowlists come from reviewed deployment outputs. The model
+receives only plugins, the read-only manifest, and `selection.py`, without host
+policy or service implementations.
 
-Deployment compares the normalized YAML selection with the host selection
-before upload. A full activation generates
-`/srv/hermes-lab/ops/tool-packages.json` from the same registration metadata and
-host selection. The agent container receives this manifest and
-`selection.py` read-only. Its bundled YAML parser reads your configuration; the
-standalone selector accepts only host-enabled packages with matching options.
-It loads no host service implementation. Partial executor or plugin deployments
-do not change package selections; use full activation when adding a package.
-
-To add a tool package, implement its service class, supply its standalone model
-plugin, and register the class in `registered.py`. The registry rejects duplicate
-package, service, and tool registrations and incomplete implementations.
-Deployment uses the class's plugin directory for mounts and plugin archives.
-Add reviewed host/IAM scope where required. The shared executor, budgets,
-transport, and receipt verifier need no new operation dispatch branches.
+To add a tool package, implement its service class and model plugin, register it,
+and provide reviewed IAM/host scope. Registration supplies plugin paths for
+mounts and archives. The shared executor needs no operation-specific branches.
 
 ## Tools and policies
 
@@ -227,31 +145,20 @@ transport, and receipt verifier need no new operation dispatch branches.
 | Resource, incident, log match | `get_lambda_function_concurrency` | Current reserved concurrency; zero differs from no reservation |
 | Resource, incident, log match | `get_lambda_event_source_mapping` | One approved SQS-to-Lambda mapping's current settings |
 
-Queue attributes are selected by trusted code. Policy documents are withheld;
-the optional redrive policy is included. Queue counts are approximate and cannot
-establish whether a particular message was received or processed.
-[SQS GetQueueAttributes](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_GetQueueAttributes.html)
-describes their eventual consistency. Lambda settings describe the observation
-time; they do not establish the configuration at an earlier incident time.
-No reserved concurrency does not mean unlimited available capacity. These tools
-do not retrieve CloudWatch metric history.
+CloudTrail covers 90 days of management-event history, excluding data events,
+Insights, and Lake. Each call checks account, region, time, and resource identity.
+Empty or incomplete results cannot establish that no change occurred.
 
-Function responses use an allowlist of operational fields, excluding environment
-values, descriptions, code, and other settings. Mapping responses validate the
-UUID, function ARN, and source queue ARN before returning selected fields;
-filter criteria and unrelated source settings are withheld. Every successful
-metadata read receives an `aws-resource:<ARN>` reference bound to its exact
-session, operation, observation time, and returned data hash. A failed read or
-identity mismatch releases no metadata or receipt.
+SQS counts are approximate and cannot prove message-level delivery. Lambda
+settings describe the current observation, not historical configuration. No
+reserved concurrency does not mean unlimited capacity. These tools do not
+retrieve metric history. Responses exclude environment values, code, queue
+policy documents, and mapping filter criteria; configured redrive policy is included.
 
-The host rejects out-of-scope tools, resource/role/account/region/endpoint
-overrides, unknown fields, wrong types, missing/expired contexts, and exhausted
-budgets. Extra arguments reach the executor for rejection. Plugin schemas grant
-no authority; there is no direct AWS or shell fallback.
-
-Log-match sessions use incident limits and bind receipts to the incident ID.
-They deny S3/run tools. The worker control socket cannot open chat profiles
-or caller-selected resources.
+Unknown fields, wrong types, scope/resource overrides, expired contexts, and
+exhausted budgets are rejected. Plugin schemas grant no authority and there is
+no direct AWS fallback. Log-match sessions deny S3/run tools; the worker control
+socket cannot open chat profiles or caller-selected resources.
 
 ## Current limits
 
@@ -263,76 +170,47 @@ or caller-selected resources.
 | Log window | Default ±5 minutes; maximum ±15 | Default two-hour lookback; maximum 24 hours |
 
 Chat's window spans launch minus lookback through expiry. Each request defaults
-to 64 KiB, capped at 256 KiB. A page holds at most twenty S3 keys, two hundred
-CloudWatch events, or fifty CloudTrail events. AWS pagination and retries are
-disabled. The thirty-second deadline includes role assumption and cannot exceed
-session expiry. Oversized output terminates the process.
+to 64 KiB, capped at 256 KiB of serialized data. Pages contain at most twenty S3
+keys, two hundred CloudWatch events, or fifty CloudTrail events. AWS pagination
+and retries are disabled. The thirty-second deadline includes authentication
+and cannot exceed session expiry.
 
-Calls reserve the full byte allowance, with no refund for small responses or
-AWS failures. Invalid requests reserve nothing. `max_bytes` covers serialized
-data, excluding metadata. Incoming JSON is limited to 8 KiB; full responses
-to 270,336 bytes. Context loss or executor restart ends access. Credential
-refresh retains accounting and never extends lifetime or budget.
-
-JSON rejects duplicate fields, nonstandard constants, and nonfinite numbers.
-Incoming frames have one five-second monotonic deadline across all fragments;
-each new byte does not restart it. Requests run serially with a bounded socket
-backlog; response writes time out after five seconds.
-
-Revocation first marks the context inactive, denying queued calls. Active AWS
-reads check cancellation and terminate their process group; output is checked
-again before release. Acknowledgement waits for the call to drain, then clears
-credentials and receipts.
+Authorized calls reserve the full byte allowance, including failed reads;
+invalid requests reserve nothing. Credential refresh preserves accounting.
+Revocation denies queued calls, cancels active reads, and withholds their output.
+Context loss or executor restart ends access and clears credentials and receipts.
 
 ## Evidence and findings
 
-Results carry an `evidence_id`, citeable `references`, source parameters,
-observation time/type, payload SHA-256, and truncation state. Clients verify
-size and hash. Logs and objects, including embedded instructions, remain
-untrusted data.
+Successful results include evidence IDs, issued references, source parameters,
+observation time/type, a payload hash, and truncation state. Clients check size
+and hash. Logs and objects remain untrusted evidence, including embedded instructions.
 
-Returned log events, S3 listing entries, and CloudTrail events are limited to
-those with an issued reference. If the reference count or byte budget truncates
-a list, the corresponding data entries are also removed and the response is
-marked partial. A model never needs to construct a reference for an entry that
-appears only in the data. Narrow the search when the relevant event is outside
-the returned page. An empty event list supplies no event citation.
+Automatic citations must match an ID/reference pair from a successful read in
+the current authorized session. Invented IDs, mismatched references, and failed
+reads are rejected. Receipts prove what was returned, not whether the diagnosis
+is correct. Partial results and failed reads remain report limitations.
 
-Automatic citations must pair an ID and reference from the same successful
-response. The host checks current-session receipts and rejects invented IDs,
-mismatches, and failed calls. Receipts prove what was returned, not whether
-a diagnosis is correct.
+`Finding` validates report structure; `FindingParser` uses the common
+`EvidenceVerifier` interface to attach trusted receipts through
+`SessionEvidenceVerifier`. Tool classes own reference formats; the parser treats
+them as opaque and needs no new branches when a tool is added.
 
-Finding validation has two responsibilities. `Finding` validates the report
-fields and citation shape. `FindingParser` requests verified evidence through
-the `EvidenceVerifier` interface. Its `SessionEvidenceVerifier` implementation
-asks the executor to resolve citations and checks the returned session, incident,
-hash, observation time, size, source, and truncation metadata before attaching
-receipts and limitations to the report.
-
-References are opaque to the report parser. Service and capability classes
-authorize reads, validate results, and issue reference strings. The executor
-requires an exact match against a saved receipt from that investigation;
-recognizing a prefix is never sufficient. Adding a registered tool with a new
-reference format requires no changes to finding validation. Run, log, and
-pipeline-health investigations use the same parser and verifier.
-
-Only an exact, complete empty listing supports absence. Listings cannot prove
-object contents. Keep denied reads, partial results, and unvisited pages explicit.
-For S3, completeness requires `IsTruncated: false`, consistent `KeyCount`, matching
-bucket/prefix, and no continuation or grouped-prefix results. Missing metadata
-means partial; contradictory scope/counts fail validation. See
+Lists expose only entries with issued references: at most twenty references and
+4 KiB per call. Clipping trims corresponding data and marks it partial. Empty
+event lists provide no event citation. Only an exact, complete empty object
+listing supports absence; a failed read or incomplete page cannot. S3 completeness
+requires matching bucket/prefix, `IsTruncated: false`, consistent `KeyCount`,
+and no continuation or grouped-prefix results. Missing metadata is partial;
+contradictory metadata fails validation. See
 [ListObjectsV2](https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html).
-References are limited to twenty and 4 KiB per call; clipping marks results
-partial. Reports retain failed reads and limitations.
 
 ## Isolation and audit
 
-The model mounts a read-only request directory at `/run/hermes-lab-aws/`.
-The shell container has no executor socket. Neither gets instance credentials,
-host Docker, control endpoints, collector state, or writable evidence.
-Networks are separate; tool SSH is internal, without internet or provider login.
-Investigations enable AWS tools only, excluding shell/file tools.
+The model sees a read-only request socket directory, without instance credentials,
+host Docker, control endpoints, original evidence, or writable policy. The shell
+container has no executor socket; investigative toolsets exclude shell/file tools.
+Tool SSH stays internal on a separate network.
 
 | Host endpoint | Access |
 | --- | --- |
@@ -340,87 +218,39 @@ Investigations enable AWS tools only, excluding shell/file tools.
 | `/run/hermes-lab-collector/control.sock` | Creator UID 1000 or root; incident scopes only; directory `0750`, socket `0660` |
 | `/run/hermes-lab-executor/requests/requests.sock` | Directory `0750`, socket `0660`; shared with model GID 10000 |
 
-Contexts and budgets belong to the host. AWS runs in a fresh environment that
-ignores saved profiles and credentials from your local machine. Temporary
-credentials stay in process memory.
-
-`/var/lib/hermes-lab-executor/audit.jsonl` records decisions, sources, counts,
-hashes, and the trusted creator UID for context opening/tool decisions.
-It excludes tokens, credentials, raw requests, and payloads. Rotation keeps
-the current 1 MiB file plus three older files. Failed audit writes deny access
-or withhold results.
+AWS service calls use a fresh environment containing the validated credential
+snapshot, with profile lookup and instance metadata disabled. Profile resolution
+happens only in trusted code when explicitly configured. `/var/lib/hermes-lab-executor/audit.jsonl` records trusted
+decisions, source parameters, counts, hashes, and creator UID, excluding tokens,
+credentials, raw requests, and evidence bodies. Rotation keeps the current
+1 MiB file plus three older files. Failed audit writes withhold access/results.
 
 ## Design rationale
 
-[Arcade's contextual access](https://docs.arcade.dev/en/operate/governance/contextual-access)
-checks tool visibility, execution, and returned results. This boundary uses
-those same checkpoints locally: a host catalog, per-call policies, and result
-validators. Visibility and schemas cannot authorize a call; enforcement code
-must be trusted host code.
-
-| Concern | Local foundation | Still needed for broader use |
-| --- | --- | --- |
-| Tool access | Host catalog plus session policy | Per-person/tenant entitlements |
-| Delegation | Host-issued scope and assumed AWS role | End-user OAuth and identity providers |
-| Input policy | Exact fields, types, resources, windows; immutable plans | Policies for additional services |
-| Output policy | Bounded samples, scope/provenance checks, partial markers | Organization-specific secret/PII rules |
-| Resource use | Atomic session reservations, deadlines, cancellation | Durable per-principal quotas across sessions |
-| Audit | Host-written decisions/receipts, fail-closed release | Central export, retention, tamper evidence |
-
-Following [Arcade's rate-limit principle](https://docs.arcade.dev/en/operate/governance/contextual-access/rate-limiting),
-reject calls when limits cannot be verified. The same applies to policy, audit,
-expiry, and evidence validation. Authorized failures still consume reservations;
-network hooks and automatic retries cannot bypass these decisions.
+Tool visibility and schemas are separate from authorization. Trusted host code
+checks the requested scope, execution, and returned evidence. Policy, audit,
+expiry, and provenance failures deny access; retries cannot bypass reservations.
 
 ## Security scope and next steps
 
-Trust rests with the host, package, backend/audit adapters, orchestrator,
-root-owned configuration, and AWS. Backend protocols are integration interfaces,
-not sandboxes: direct calls bypass the executor and belong only in trusted
-agent-execution code. Collection/notifications use their own AWS clients.
-The runtime opens grants and verifies citations through the control API.
-Never load agent-selected Python plugins into the service or expose control
-operations as agent tools.
+Trust rests with the host, installed packages, orchestrator, deployment policy,
+and AWS. Backend interfaces are not sandboxes. Agent-selected Python plugins
+and model access to control operations are unsupported.
 
-A private random bearer token and Unix permissions protect the agent endpoint.
-Creator UID identifies root or the incident worker, not a human or individual
-agent process. A stolen token plus socket access exposes the session's remaining
-scope and budget. This is a single-host boundary, without multi-tenant
-authentication. Before shared/remote clients, authenticate callers independently
-and bind grants to them, as described in
-[MCP security guidance](https://modelcontextprotocol.io/specification/draft/basic/security_best_practices).
-Do not hand-build OAuth or token cryptography to avoid a dependency decision.
-
-Extend only as needed:
-
-1. Bind grants to authenticated callers and explicit tool subsets. Add
-   policy-version revocation and durable per-principal budgets if grants must
-   survive restarts. Today a restart revokes all grants; new ones need trusted
-   authorization.
-2. Add sensitive-data output rules before widening reads. Provenance cannot
-   make content true, safe, or immune to prompt injection. There is no general
-   redactor or injection detector.
-3. Before writes, bind one-use approval to exact action, resource, parameters,
-   caller, and expiry. Persist outcomes for safe retries. There are currently
-   no write operations or approval UI.
-4. Export audits to protected storage when retention/tamper detection matters.
-   Local rotation cannot protect against a compromised host. Frame timeouts
-   limit slow clients but cannot ensure fairness against repeated socket use.
+This is a single-host boundary, without per-person or tenant authentication.
+A stolen token plus socket access exposes its remaining scope and budget.
+Provenance does not establish truth or prevent prompt injection; there is no
+general redactor. Local audit rotation cannot protect against a compromised
+host. Shared/remote clients require independent authentication, and write tools
+would require explicit action approval and durable outcome tracking.
 
 ## Shared observation access
 
-The collector writes `/var/lib/hermes-lab-observations/observations.sqlite3`.
-It stores every collected event and coverage, including records that match no
-rule. Host consumers read bounded batches and maintain independent positions.
-The pipeline-health executor has read-only filesystem access; the agent
-container has no database mount. A health tool query derives its source,
-correlation, and time window from the current approved expectation, rather than
-accepting those fields from model arguments. Receipts bind returned check
-observations to the authorized session. Incomplete coverage remains unknown.
+The collector writes `/var/lib/hermes-lab-observations/observations.sqlite3`;
+consumers read bounded batches with independent progress. The pipeline-health
+executor has read-only access; the model has no database mount. Expectations
+supply query source, correlation, and time window. Incomplete coverage stays unknown.
 
-`collection_log_groups` names explicit approved CloudWatch groups in the host
-account and region, including the primary pipeline group. Log incidents pin
-their investigation to their original approved group and bounded time range.
-An approved second group does not let that session read every approved group.
-CloudTrail history uses the existing enabled tool package and its exact resource
-allowlist; it does not grant data-event or S3 trail-archive access.
+`collection_log_groups` approves exact groups in the host account/region. Each
+log incident remains bound to its original group and window. CloudTrail uses
+the enabled package and exact resource allowlist, without data-event or archive access.

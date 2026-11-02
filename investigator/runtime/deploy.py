@@ -48,8 +48,8 @@ def validate_tool_configuration(executor_config: bytes) -> None:
 
     if snapshot != selected:
         raise ValueError(
-            "Agent YAML differs from Terraform tool configuration; "
-            "review and apply the agent plan before deploying"
+            "Agent YAML differs from approved tool configuration; "
+            "update the resource configuration before deploying"
         )
 
 
@@ -59,6 +59,7 @@ def build_archive(root: Path = PROJECT_ROOT) -> bytes:
     paths = []
 
     for folder in (
+        "aws_access",
         "collector",
         "observations",
         "incidents",

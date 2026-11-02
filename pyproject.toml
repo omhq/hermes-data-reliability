@@ -18,6 +18,7 @@ pythonPlatform = "Linux"
 venvPath = "."
 venv = ".venv"
 include = [
+    "aws_access",
     "collector",
     "observations",
     "incidents",
