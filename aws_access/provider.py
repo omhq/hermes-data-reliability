@@ -120,6 +120,23 @@ class CredentialProvider:
                 base,
             )
 
+        return self._authenticate(document, call, base)
+
+    def authenticate_exported(
+        self, document: object, call: AwsCall
+    ) -> Authenticated:
+        """Validate a host-exported profile without loading profile files."""
+        if self.policy.source != "profile":
+            raise CredentialError("invalid_configuration")
+
+        return self._authenticate(document, call, self.policy.environment())
+
+    def _authenticate(
+        self,
+        document: object,
+        call: AwsCall,
+        base: dict[str, str],
+    ) -> Authenticated:
         if (
             type(document) is not dict
             or type(document.get("Version")) is not int

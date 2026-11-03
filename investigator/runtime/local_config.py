@@ -125,32 +125,38 @@ def run_aws(command: list[str], environment: dict[str, str]) -> dict[str, Any]:
     return value
 
 
-def resolve_credentials(configuration: dict[str, Any]) -> Authenticated:
+def resolve_credentials(
+    configuration: dict[str, Any], exported: Path
+) -> Authenticated:
     executable = shutil.which("aws")
 
     if executable is None:
         raise LocalConfigurationError("Install AWS CLI v2 before configuring.")
 
-    return CredentialProvider(
-        AccessPolicy.load(configuration), executable
-    ).authenticate(run_aws)
+    try:
+        with exported.open("rb") as source:
+            payload = source.read(65537)
 
+        if len(payload) > 65536:
+            raise LocalConfigurationError("Exported credentials are too large")
 
-def import_terraform(destination: Path) -> None:
-    response = subprocess.run(
-        ["terraform", "output", "-json", "investigator"],
-        cwd=PROJECT_ROOT / "infra/aws-agent",
-        capture_output=True,
-        timeout=30,
-        check=False,
-    )
-
-    if response.returncode:
+        document = json.loads(payload)
+    except OSError, ValueError:
         raise LocalConfigurationError(
-            "Could not import the agent Terraform resource outputs."
-        )
+            "Exported profile credentials are unavailable or invalid."
+        ) from None
 
-    value = json.loads(response.stdout)
+    provider = CredentialProvider(AccessPolicy.load(configuration), executable)
+
+    return provider.authenticate_exported(document, run_aws)
+
+
+def import_terraform(source: Path, destination: Path) -> None:
+    value = json.loads(source.read_bytes())
+
+    if type(value) is not dict:
+        raise LocalConfigurationError("Invalid Terraform resource output")
+
     definition = {
         "version": 1,
         **{key: value[key] for key in RESOURCE_FIELDS if key in value},
@@ -159,9 +165,11 @@ def import_terraform(destination: Path) -> None:
     write_private(destination, dump_yaml(definition))
 
 
-def configure(profile: str, source: Path, destination: Path) -> None:
+def configure(
+    profile: str, source: Path, destination: Path, exported: Path
+) -> None:
     configuration, notifications = load_resources(source, profile)
-    acquired = resolve_credentials(configuration)
+    acquired = resolve_credentials(configuration, exported)
     original = configuration["authentication"]
     authentication = {
         "source": "file",
@@ -198,7 +206,7 @@ def configure(profile: str, source: Path, destination: Path) -> None:
     )
 
 
-def refresh(profile: str, destination: Path) -> None:
+def refresh(profile: str, destination: Path, exported: Path) -> None:
     configuration = json.loads(
         (destination / "investigator.json").read_bytes()
     )
@@ -210,7 +218,7 @@ def refresh(profile: str, destination: Path) -> None:
         "principal_id": metadata["source_principal_id"],
         "assume_role_arn": metadata["assume_role_arn"],
     }
-    acquired = resolve_credentials(configuration)
+    acquired = resolve_credentials(configuration, exported)
 
     if acquired.principal.identifier != expected_principal:
         raise CredentialError("unexpected_aws_identity")
@@ -229,20 +237,21 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=["configure", "credentials"])
     parser.add_argument("--profile", required=True)
+    parser.add_argument("--exported-credentials", type=Path, required=True)
     parser.add_argument("--config", type=Path, default=RESOURCE_CONFIG)
-    parser.add_argument("--from-terraform", action="store_true")
+    parser.add_argument("--terraform-output", type=Path)
     parser.add_argument("--destination", type=Path, default=DESTINATION)
     args = parser.parse_args()
 
     if not args.profile.strip() or args.profile == "default":
         parser.error("Select an explicit nondefault AWS profile")
-    if args.from_terraform and args.action != "configure":
-        parser.error("--from-terraform requires configure")
+    if args.terraform_output is not None and args.action != "configure":
+        parser.error("--terraform-output requires configure")
 
     try:
         if args.action == "configure":
-            if args.from_terraform:
-                import_terraform(args.config)
+            if args.terraform_output is not None:
+                import_terraform(args.terraform_output, args.config)
             if not args.config.is_file():
                 raise LocalConfigurationError(
                     "Create .local/runtime.yaml from runtime.example.yaml "
@@ -250,9 +259,14 @@ def main() -> None:
                     "--config. Terraform is not required."
                 )
 
-            configure(args.profile, args.config, args.destination)
+            configure(
+                args.profile,
+                args.config,
+                args.destination,
+                args.exported_credentials,
+            )
         else:
-            refresh(args.profile, args.destination)
+            refresh(args.profile, args.destination, args.exported_credentials)
     except LocalConfigurationError as error:
         raise SystemExit(str(error)) from None
     except CredentialError as error:

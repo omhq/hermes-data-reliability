@@ -24,8 +24,9 @@ executor, investigations, chat, and configured report delivery. AWS Backup and
 the EC2 CloudWatch health metric apply only to EC2; local health is saved and
 logged inside the container.
 
-Prepare the local Python environment from the README and install AWS CLI v2.
-Choose an explicit nondefault AWS profile with access to your evidence resources.
+Install Make and AWS CLI v2. Local Python and `.venv` are optional; setup,
+validation, and runtime Python commands run in containers. Choose an explicit
+nondefault AWS profile with access to your evidence resources.
 You can use existing resources without provisioning EC2 or running Terraform.
 On your local machine, create your private resource configuration:
 
@@ -48,14 +49,28 @@ Authenticate the selected profile as needed, then configure and start:
 ```bash
 make configure AWS_PROFILE=YOUR_PROFILE
 make up
+```
+
+`make up` stays in the foreground and streams build, startup, and service logs.
+Wait for `Local host installed with the shared runtime services.`, then open
+another terminal on your local machine at the repository root:
+
+```bash
 make login
 make status
 ```
 
-For SSO, run `aws sso login --profile YOUR_PROFILE` first. `configure` validates
-the resource configuration and tool selection, resolves that explicit profile,
-and verifies the account and principal. It writes approved configuration and a
-credential snapshot to ignored `.local/docker/` with private file permissions.
+Press Ctrl+C in the `make up` terminal to stop the runtime host and its nested
+Hermes containers. Shutdown can take up to 90 seconds. Saved state stays in
+Docker volumes; run `make up` again to restart.
+
+For SSO, run `aws sso login --profile YOUR_PROFILE` first. `configure` uses AWS
+CLI on your local machine to export that explicit profile, including SSO or
+`credential_process` authentication. A disposable setup container validates the
+resource configuration and tool selection, verifies the account and principal,
+and optionally assumes your configured role. It writes approved configuration
+and a credential snapshot to ignored `.local/docker/` with private file
+permissions. Temporary input files are removed when the command exits.
 Hermes receives neither those credentials nor the host's Docker socket. Your
 AWS profile files, SSO cache, and SSH keys stay on your local machine.
 
@@ -90,10 +105,17 @@ For tests and formatting checks, Docker alone is enough:
 ```bash
 make test
 make check
+make format
 ```
 
-These use a separate unprivileged container with no network, AWS credentials,
-or runtime volumes. `make up` rebuilds and activates source changes while
+Tests and checks use disposable, unprivileged containers with no network, AWS
+credentials, or runtime volumes. `make check` checks formatting, lint, and
+Python compilation. `make format` uses the same image and isolation settings
+with your checkout mounted to format and fix lint.
+Image builds need network access to install dependencies. See the README for
+the [optional editor environment](../README.md#development).
+
+`make up` rebuilds and activates source changes while
 preserving saved state and pause intent. Rebuild the image after editing source;
 the runtime does not bind-mount your checkout.
 

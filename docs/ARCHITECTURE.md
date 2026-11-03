@@ -11,6 +11,16 @@ image, and isolated tools container. The local host has its own nested Docker
 daemon. Rebuilding activates a source release through the same installation
 path; configuration and databases live in persistent Docker volumes.
 
+The local Compose host runs in the foreground and forwards its service journal
+to the terminal. Ctrl+C shuts down systemd services and the nested Docker
+daemon within the host's 90-second stop grace period.
+
+Local Make commands require no local Python environment. A disposable setup
+container validates resource configuration and the credential export supplied
+by your local AWS CLI. Separate disposable containers run tests, lint, formatting,
+and compilation with Python 3.14. Checks have no network or runtime state;
+formatting mounts the checkout to apply changes. An editor `.venv` is optional.
+
 Local execution uses the approved AWS resources and the same investigation
 limits. A shared trusted provider supports explicit profiles, instance
 credentials, and private credential files with optional role assumption. Local

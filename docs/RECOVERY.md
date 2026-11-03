@@ -6,10 +6,11 @@ convert old formats.
 
 ## Local container saved state
 
-On your local machine, `make stop` pauses writers and `make down` stops the
-runtime host without deleting any volumes. The Compose project keeps separate
-volumes for `/srv/hermes-lab`, collected observations, executor state, and nested
-Docker images. `make up` rebuilds the source image and reuses those volumes.
+On your local machine, `make stop` pauses writers. Ctrl+C in the `make up`
+terminal or `make down` stops the runtime host without deleting any volumes.
+The Compose project keeps separate volumes for `/srv/hermes-lab`, collected
+observations, executor state, and nested Docker images. `make up` rebuilds the
+source image and reuses those volumes.
 
 Use `labctl checkpoint` inside `make shell` for a consistent checkpoint of
 Hermes, findings, and collected observations. Preserve executor history

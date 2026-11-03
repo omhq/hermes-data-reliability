@@ -17,6 +17,13 @@ cat > /etc/docker/daemon.json <<'EOF'
 }
 EOF
 
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/hermes-local-console.conf <<'EOF'
+[Journal]
+ForwardToConsole=yes
+MaxLevelConsole=info
+EOF
+
 cp /opt/hermes-lab-source/investigator/runtime/hermes-local-host.service \
     /etc/systemd/system/hermes-local-host.service
 exec /sbin/init

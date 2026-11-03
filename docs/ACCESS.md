@@ -8,9 +8,16 @@ Any source can optionally assume a configured role. The shared `aws_access/`
 provider resolves credentials, freezes each AWS call environment, and verifies
 the allowlisted account and configured principal before evidence reads.
 
-Local setup resolves your explicit profile on your local machine. Trusted
-services inside the host read its credential snapshot from
+Local setup exports your explicit profile with AWS CLI on your local machine.
+A disposable setup container receives only the export and approved resource
+configuration. It validates the account and principals and optionally assumes
+the configured role before writing the runtime snapshot. AWS profile files and
+login caches stay on your local machine. Trusted services inside the host read
+the credential snapshot from
 `/run/hermes-lab-credentials/aws.json`; Hermes and its tools cannot read it.
+The snapshot is owned by root and readable by host group 1000. The collector
+retains that supplementary group while using the executor group to access
+the observation database; the executor also has snapshot access.
 Configuration pins the principal's stable AWS identifier. Refresh revalidates
 both source and final principals and retains authorization and budget history.
 A missing or expired file cannot fall back to instance metadata or a default

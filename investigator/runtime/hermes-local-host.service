@@ -9,8 +9,6 @@ WorkingDirectory=/opt/hermes-lab-source
 ExecStart=/opt/hermes-lab-collector/bin/python -m investigator.runtime.local_host
 RemainAfterExit=yes
 TimeoutStartSec=1800
-StandardOutput=journal+console
-StandardError=journal+console
 
 [Install]
 WantedBy=multi-user.target

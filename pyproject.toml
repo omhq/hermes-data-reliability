@@ -15,8 +15,6 @@ ignore = ["ANN401"]
 pythonVersion = "3.14"
 # Production runs on Linux, including the executor's SO_PEERCRED checks.
 pythonPlatform = "Linux"
-venvPath = "."
-venv = ".venv"
 include = [
     "aws_access",
     "collector",

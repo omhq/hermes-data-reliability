@@ -1,0 +1,82 @@
+name: hermes-data-reliability
+
+services:
+  runtime:
+    build:
+      context: .
+      target: runtime
+    privileged: true
+    cgroup: private
+    tty: true
+    tmpfs:
+      - /run
+      - /tmp
+    volumes:
+      - runtime:/srv/hermes-lab
+      - observations:/var/lib/hermes-lab-observations
+      - executor:/var/lib/hermes-lab-executor
+      - docker:/var/lib/docker
+      - type: bind
+        source: ./.local/docker
+        target: /run/hermes-lab-input
+        read_only: true
+        bind:
+          create_host_path: false
+    stop_grace_period: 90s
+    mem_limit: 7g
+    cpus: 4
+    pids_limit: 2048
+    healthcheck:
+      test:
+        - CMD
+        - /opt/hermes-lab-collector/bin/python
+        - -m
+        - investigator.runtime.local_host
+        - --check
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  setup:
+    profiles: [setup]
+    build:
+      context: .
+      target: setup
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 384m
+    cpus: 1
+    pids_limit: 128
+
+  test:
+    profiles: [test]
+    build:
+      context: .
+      target: test
+    network_mode: none
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 256
+
+volumes:
+  runtime:
+  observations:
+  executor:
+  docker:

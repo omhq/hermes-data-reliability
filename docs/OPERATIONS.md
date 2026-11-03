@@ -11,11 +11,12 @@ connects to EC2.
 ## Local container controls
 
 Run these from the repository root on your local machine after
-[local setup](SETUP.md#local-docker-runtime):
+[local setup](SETUP.md#local-docker-runtime). These commands use container
+Python; local Python and `.venv` are optional:
 
 | Action | Command |
 | --- | --- |
-| Build and start the runtime host | `make up` |
+| Build and run with live logs; Ctrl+C stops local containers | `make up` |
 | Inspect services, health, and budget | `make status` |
 | Follow service logs | `make logs` |
 | Pause workers and Hermes containers | `make stop` |
@@ -25,6 +26,12 @@ Run these from the repository root on your local machine after
 | Investigate interactively | `make chat` |
 | Open a runtime host shell | `make shell` |
 | Stop the host, preserving volumes | `make down` |
+
+Keep `make up` running in one terminal. After startup completes, run the other
+commands in a second terminal on your local machine at the repository root.
+Build output and service logs appear in the first terminal. Ctrl+C stops the
+local runtime host, services, and nested Hermes containers; allow up to 90
+seconds for shutdown. Saved state stays in Docker volumes.
 
 Pass command options with `ARGS`, for example `make chat ARGS="--minutes 15"`.
 Inside `make shell`, use the same `labctl`, `systemctl`, `journalctl`, and
@@ -40,8 +47,9 @@ machine with an explicit profile:
 make credentials AWS_PROFILE=YOUR_PROFILE
 ```
 
-The command replaces the trusted credential file without restarting workers or
-resetting budgets. It revalidates the configured account and principal; a
+The command exports your profile with the local AWS CLI and uses a disposable
+setup container to revalidate the configured account and principal. It replaces
+the trusted credential file without restarting workers or resetting budgets. A
 different principal requires `make configure` and `make up`. Expired or missing
 credentials fail closed. Refresh your SSO login first if necessary. Hermes
 authentication is separate from AWS authentication.

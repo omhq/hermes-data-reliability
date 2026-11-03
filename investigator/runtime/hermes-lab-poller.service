@@ -9,6 +9,7 @@ ConditionPathExists=/srv/hermes-lab/ops/enabled
 Type=oneshot
 User=ec2-user
 Group=hermes-lab-executor
+SupplementaryGroups=1000
 UMask=0027
 Environment=AWS_DEFAULT_REGION=us-east-1
 WorkingDirectory=/srv/hermes-lab/code

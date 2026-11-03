@@ -1,0 +1,21 @@
+version: 1
+account_id: "YOUR_ACCOUNT_ID"
+region: us-east-1
+bucket: your-existing-evidence-bucket
+log_group: /your/existing/log-group
+collection_log_groups: []
+sqs_queue_arns: []
+lambda_function_arns: []
+lambda_event_source_mappings: {}
+health_resources: {}
+
+# Credentials come from the explicit AWS_PROFILE passed to make configure.
+# Leave empty to use that profile directly, including its own SSO/role settings.
+authentication: {}
+# Optional additional role assumption:
+# authentication:
+#   assume_role_arn: arn:aws:iam::YOUR_ACCOUNT_ID:role/YOUR_READ_ROLE
+
+notifications:
+  enabled: false
+# Set enabled: true and an approved topic_arn to deliver reports through SNS.
