@@ -98,3 +98,35 @@ variable "evidence_log_group" {
     error_message = "Supply a literal existing log group name without an ARN or wildcard."
   }
 }
+
+variable "sqs_queue_arns" {
+  description = "Exact existing queue ARNs approved for optional SQS metadata reads."
+  type        = list(string)
+  default     = []
+}
+
+variable "collection_log_groups" {
+  description = "Additional literal CloudWatch groups approved for shared collection in the configured account and region."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = length(var.collection_log_groups) <= 15 && alltrue([for group in var.collection_log_groups : can(regex("^[a-zA-Z0-9/._#-]{1,512}$", group))])
+    error_message = "Supply at most fifteen literal log group names without wildcards."
+  }
+}
+
+variable "lambda_function_arns" {
+  description = "Exact unqualified function ARNs approved for optional Lambda metadata reads."
+  type        = list(string)
+  default     = []
+}
+
+variable "lambda_event_source_mappings" {
+  description = "Approved mapping UUIDs bound to an allowed function and SQS queue."
+  type = map(object({
+    function_arn = string
+    queue_arn    = string
+  }))
+  default = {}
+}

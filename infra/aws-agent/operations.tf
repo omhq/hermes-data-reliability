@@ -175,6 +175,10 @@ resource "aws_cloudwatch_metric_alarm" "backups" {
 
 output "operations" {
   value = {
+    authentication = {
+      source        = "instance"
+      principal_arn = aws_iam_role.hermes.arn
+    }
     instance_id                   = aws_instance.hermes.id
     account_id                    = var.expected_account_id
     root_volume_id                = aws_instance.hermes.root_block_device[0].volume_id

@@ -17,6 +17,13 @@ ssh_key_name = "your-existing-key-pair"
 evidence_bucket_name = "your-existing-evidence-bucket"
 evidence_log_group   = "/your/existing/log-group"
 
+# Optional metadata tools: copy exact identifiers from your pipeline outputs.
+# Enable hermes-sqs/hermes-lambda in investigator/runtime/config.yaml too.
+sqs_queue_arns               = []
+lambda_function_arns         = []
+lambda_event_source_mappings = {}
+
 # Optional agent report recipient; confirm the AWS subscription email.
 # CloudWatch health and recovery emails are disabled.
 # alert_email = "alerts@example.com"
+collection_log_groups = [] # Additional approved CloudWatch log group names.
